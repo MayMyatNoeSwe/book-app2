@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test Delete Button</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+</head>
+
+<body>
+    <div class="container my-5">
+        <h1>Test Delete Button</h1>
+        <p>This page tests if the delete button and SweetAlert2 are working correctly.</p>
+
+        <div class="card">
+            <div class="card-body">
+                <h5>Test Review</h5>
+                <p>Rating: ⭐⭐⭐⭐⭐</p>
+                <p>This is a test review</p>
+
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="alert('Edit button clicked!')">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteReview(123)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+
+        <hr>
+
+        <h3>Debug Info:</h3>
+        <div id="debug" class="alert alert-info"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        // Check if SweetAlert2 is loaded
+        document.getElementById('debug').innerHTML =
+            'SweetAlert2 loaded: ' + (typeof Swal !== 'undefined' ? '✓ YES' : '✗ NO') + '<br>' +
+            'deleteReview function: ' + (typeof deleteReview === 'function' ? '✓ Defined' : '✗ Not defined yet');
+
+        // Delete review function (same as book-details.php)
+        function deleteReview(reviewId) {
+            console.log('deleteReview called with ID:', reviewId);
+
+            Swal.fire({
+                title: 'Delete Review?',
+                text: 'Are you sure you want to delete this review? This action cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, delete it!',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    console.log('User confirmed deletion');
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Deleted!',
+                        text: 'Your review has been deleted (TEST MODE - no actual deletion)',
+                        confirmButtonColor: '#2e8a40',
+                        timer: 2000
+                    });
+                } else {
+                    console.log('User cancelled deletion');
+                }
+            });
+        }
+
+        // Update debug info after function is defined
+        setTimeout(() => {
+            document.getElementById('debug').innerHTML =
+                'SweetAlert2 loaded: ' + (typeof Swal !== 'undefined' ? '✓ YES' : '✗ NO') + '<br>' +
+                'deleteReview function: ' + (typeof deleteReview === 'function' ? '✓ Defined' : '✗ Not defined');
+        }, 100);
+    </script>
+</body>
+
+</html>

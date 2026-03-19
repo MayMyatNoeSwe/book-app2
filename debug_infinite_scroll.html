@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Scroll Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-info { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .test-button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        .test-button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; border-left: 4px solid #007bff; background: #f8f9fa; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+    </style>
+</head>
+<body>
+    <h1>Infinite Scroll Debug Tool</h1>
+    
+    <div class="debug-info">
+        <h3>Test Your Infinite Scroll API</h3>
+        <p>This tool helps you test the infinite scroll functionality by making direct API calls.</p>
+    </div>
+
+    <div>
+        <button class="test-button" onclick="testAPI(1)">Test Page 1</button>
+        <button class="test-button" onclick="testAPI(2)">Test Page 2</button>
+        <button class="test-button" onclick="testAPI(3)">Test Page 3</button>
+        <button class="test-button" onclick="testAPIWithCategory()">Test with Category</button>
+        <button class="test-button" onclick="testAPIWithSearch()">Test with Search</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        async function testAPI(page, category = '', search = '') {
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                const url = `api/load_books.php?page=${page}&cat=${encodeURIComponent(category)}&q=${encodeURIComponent(search)}`;
+                
+                resultsDiv.innerHTML += `<div class="result">Testing: ${url}</div>`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const html = await response.text();
+                
+                if (html.trim().length === 0) {
+                    resultsDiv.innerHTML += `<div class="result">✅ Page ${page}: No more results (empty response)</div>`;
+                } else {
+                    // Count book cards in response
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = html;
+                    const bookCards = tempDiv.querySelectorAll('.col');
+                    
+                    resultsDiv.innerHTML += `<div class="result success">✅ Page ${page}: Found ${bookCards.length} books</div>`;
+                }
+                
+            } catch (error) {
+                resultsDiv.innerHTML += `<div class="result error">❌ Page ${page}: ${error.message}</div>`;
+            }
+        }
+
+        function testAPIWithCategory() {
+            testAPI(1, 'Fiction', '');
+        }
+
+        function testAPIWithSearch() {
+            testAPI(1, '', 'test');
+        }
+
+        // Clear results
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // Add clear button
+        document.addEventListener('DOMContentLoaded', () => {
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'test-button';
+            clearBtn.textContent = 'Clear Results';
+            clearBtn.onclick = clearResults;
+            clearBtn.style.background = '#6c757d';
+            document.querySelector('div').appendChild(clearBtn);
+        });
+    </script>
+</body>
+</html>

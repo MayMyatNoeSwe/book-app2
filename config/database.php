@@ -1,0 +1,14 @@
+<?php
+return [
+    'host' => getenv('DB_HOST') ?: 'localhost',
+    'dbname' => getenv('DB_NAME') ?: 'book_library',
+    'username' => getenv('DB_USER') ?: 'root', 
+    'password' => getenv('DB_PASS') !== false ? getenv('DB_PASS') : '',
+    'charset' => 'utf8mb4',
+    'options' => [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4; SET time_zone = '+06:30';"
+    ]
+];

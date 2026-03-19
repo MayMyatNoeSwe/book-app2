@@ -1,0 +1,76 @@
+/* Animations */
+.animate-on-scroll {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    will-change: opacity, transform;
+}
+
+.animate-on-scroll.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Staggered delays are handled in JS, but we can set defaults */
+.stagger-item {
+    /* transition-delay set by JS */
+}
+
+/* Specific adjustments for different elements */
+.hero-content.animate-on-scroll {
+    transition-duration: 0.8s;
+}
+
+.card.animate-on-scroll {
+    transition-duration: 0.5s;
+}
+
+/* Smooth hover effects for cards */
+.card.hover-shadow {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card.hover-shadow:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+}
+
+/* Loading states */
+.loading-skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Improved sentinel styling */
+#sentinel {
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Fade in animation for new content */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-up {
+    animation: fadeInUp 0.5s ease-out;
+}
