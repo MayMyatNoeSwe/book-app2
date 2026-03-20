@@ -24,8 +24,8 @@ $limit = 12;
 $offset = 0;
 
 // Filter Parameters
-$category = $_GET['cat'] ?? null;
-$search = $_GET['q'] ?? null;
+$category = $_GET['category'] ?? null;
+$search = $_GET['search'] ?? null;
 
 // Clean and validate search parameter
 if ($search !== null) {
@@ -136,11 +136,11 @@ $heroCover = $featuredBook
                 <form class="hero-search reveal" data-delay="0.28" action="index.php" method="get">
                     <div class="hero-search-field">
                         <i class="fas fa-search"></i>
-                        <input type="text" name="q" placeholder="Search titles, authors, or keywords" value="<?= e($search ?? '') ?>">
+                        <input type="text" name="search" placeholder="Search titles, authors, or keywords" value="<?= e($search ?? '') ?>">
                     </div>
                     <div class="hero-search-field">
                         <i class="fas fa-tags"></i>
-                        <select name="cat">
+                        <select name="category">
                             <option value="">All Categories</option>
                             <?php foreach ($allCategories as $cat): ?>
                                 <option value="<?= e($cat) ?>" <?= $category === $cat ? 'selected' : '' ?>><?= e($cat) ?></option>
@@ -206,7 +206,9 @@ $heroCover = $featuredBook
 <section class="category-ribbon">
     <div class="ribbon-track">
         <?php foreach (array_merge($allCategories, $allCategories) as $cat): ?>
-            <span class="ribbon-chip"><i class="fas fa-book-open me-2"></i><?= e($cat) ?></span>
+            <a href="book-list.php?category=<?= urlencode($cat) ?>" class="ribbon-chip text-decoration-none">
+                <i class="fas fa-book-open me-2"></i><?= e($cat) ?>
+            </a>
         <?php endforeach; ?>
     </div>
 </section>

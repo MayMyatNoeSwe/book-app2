@@ -36,18 +36,66 @@ function getCategories(): array
     ];
 
     try {
-        $config = include APP_ROOT . '/config/database.php';
-        $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
-        $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
-        $stmt = $pdo->query("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND TRIM(category) <> '' ORDER BY category ASC");
-        $dbCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-        if (!empty($dbCategories)) {
-            $categories = array_values(array_unique(array_map('trim', $dbCategories)));
+        $configPath = APP_ROOT . '/config/database.php';
+        if (!file_exists($configPath)) {
+            error_log("getCategories: Config file not found at $configPath");
+            $categories = $fallbackCategories;
             return $categories;
         }
+
+        $config = include $configPath;
+        if (!is_array($config)) {
+            error_log("getCategories: Config inclusion did not return an array");
+            $categories = $fallbackCategories;
+            return $categories;
+        }
+
+        $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
+        $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options'] ?? []);
+        
+        $allFound = [];
+
+        // 1. Try to fetch from categories table
+        try {
+            $stmt = $pdo->query("SELECT name FROM categories ORDER BY name ASC");
+            if ($stmt) {
+                $dbCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($dbCategories)) {
+                    $allFound = array_merge($allFound, $dbCategories);
+                }
+            }
+        } catch (Throwable $e) {
+            error_log("getCategories Category Table Error: " . $e->getMessage());
+        }
+
+        // 2. Also fetch DISTINCT categories from books table to ensure none are missed
+        try {
+            $stmt = $pdo->query("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND TRIM(category) <> '' ORDER BY category ASC");
+            if ($stmt) {
+                $bookCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($bookCategories)) {
+                    $allFound = array_merge($allFound, $bookCategories);
+                }
+            }
+        } catch (Throwable $e) {
+            error_log("getCategories Books Table Error: " . $e->getMessage());
+        }
+        
+        if (!empty($allFound)) {
+            // Clean, unique, and sort
+            $res = array_map('trim', $allFound);
+            $res = array_filter($res);
+            $res = array_unique($res);
+            sort($res);
+            $categories = $res;
+            return $categories;
+        }
+        
     } catch (Throwable $e) {
-        // Fall back to the static list if the database is unavailable.
+        error_log("getCategories Master Error: " . $e->getMessage());
+        if (ini_get('display_errors')) {
+             echo "<!-- getCategories Master DB Error: " . htmlspecialchars($e->getMessage()) . " -->";
+        }
     }
 
     $categories = $fallbackCategories;
@@ -177,7 +225,7 @@ function baseUrl(): string
 {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
     $host = $_SERVER['HTTP_HOST'];
-    $script = dirname($_SERVER['SCRIPT_NAME']);
+    $script = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
     return rtrim($protocol . $host . $script, '/');
 }
 
