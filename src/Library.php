@@ -196,11 +196,18 @@ class Library
         }
         $sql .= " GROUP BY b.id ";
         $sql .= " ORDER BY title LIMIT ? OFFSET ?";
-        $params[] = $limit;
-        $params[] = $offset;
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
+        
+        // Bind parameters manually to ensure LIMIT and OFFSET are treated as integers
+        $i = 1;
+        foreach ($params as $param) {
+            $stmt->bindValue($i++, $param);
+        }
+        $stmt->bindValue($i++, (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue($i++, (int)$offset, \PDO::PARAM_INT);
+        
+        $stmt->execute();
 
         $books = [];
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
@@ -302,7 +309,8 @@ class Library
                 LIMIT ?";
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([$limit]);
+        $stmt->bindValue(1, (int)$limit, \PDO::PARAM_INT);
+        $stmt->execute();
         
         $books = [];
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
@@ -407,7 +415,9 @@ class Library
                 LIMIT ? OFFSET ?";
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([$limit, $offset]);
+        $stmt->bindValue(1, (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue(2, (int)$offset, \PDO::PARAM_INT);
+        $stmt->execute();
         
         $books = [];
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {

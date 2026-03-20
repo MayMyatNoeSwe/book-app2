@@ -4,7 +4,7 @@ use App\Auth;
 
 displayFlashMessage();
 
-$navCats = ['Fiction', 'Non-Fiction', 'Mystery', 'Romance', 'Sci-Fi', 'Biography'];
+$navCats = getCategories();
 ?>
 <nav class="navbar navbar-expand-lg navbar-premium sticky-top py-3" style="z-index: 1050 !important;">
     <div class="container-fluid px-3 px-lg-5 d-flex align-items-center flex-wrap">
@@ -38,7 +38,7 @@ $navCats = ['Fiction', 'Non-Fiction', 'Mystery', 'Romance', 'Sci-Fi', 'Biography
                     </a>
                     <ul class="dropdown-menu dropdown-menu-start border-0 shadow" aria-labelledby="browseDropdown">
                         <?php foreach ($navCats as $navCat): ?>
-                        <li><a class="dropdown-item" href="<?= baseUrl() ?>/book-list.php?cat=<?= urlencode($navCat) ?>"><?= $navCat ?></a></li>
+                        <li><a class="dropdown-item" href="<?= baseUrl() ?>/book-list.php?category=<?= urlencode($navCat) ?>"><?= e($navCat) ?></a></li>
                         <?php endforeach; ?>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="<?= baseUrl() ?>/book-list.php">View All Books</a></li>
@@ -110,7 +110,7 @@ $navCats = ['Fiction', 'Non-Fiction', 'Mystery', 'Romance', 'Sci-Fi', 'Biography
                         <div class="collapse" id="mobileCatCollapse">
                             <ul class="mobile-subnav-list">
                                 <?php foreach ($navCats as $navCat): ?>
-                                <li><a href="<?= baseUrl() ?>/book-list.php?cat=<?= urlencode($navCat) ?>"><?= $navCat ?></a></li>
+                                <li><a href="<?= baseUrl() ?>/book-list.php?category=<?= urlencode($navCat) ?>"><?= e($navCat) ?></a></li>
                                 <?php endforeach; ?>
                                 <li><a href="<?= baseUrl() ?>/book-list.php">View All Books</a></li>
                             </ul>
@@ -162,6 +162,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Fallback dropdown toggle for nav menus in case Bootstrap dropdowns
+    // do not initialize correctly on the current page.
+    const navDropdowns = Array.from(document.querySelectorAll('.navbar-premium .nav-item.dropdown'));
+    const closeNavDropdowns = (except = null) => {
+        navDropdowns.forEach((dropdown) => {
+            if (dropdown === except) return;
+            dropdown.classList.remove('show');
+            const toggle = dropdown.querySelector('.dropdown-toggle');
+            const menu = dropdown.querySelector('.dropdown-menu');
+            const chevron = dropdown.querySelector('.nav-chevron');
+            toggle?.setAttribute('aria-expanded', 'false');
+            menu?.classList.remove('show');
+            chevron?.classList.remove('rotated');
+        });
+    };
+
+    navDropdowns.forEach((dropdown) => {
+        const toggle = dropdown.querySelector('.dropdown-toggle');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        const chevron = dropdown.querySelector('.nav-chevron');
+        if (!toggle || !menu) return;
+
+        toggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const willOpen = !menu.classList.contains('show');
+            closeNavDropdowns(dropdown);
+
+            dropdown.classList.toggle('show', willOpen);
+            menu.classList.toggle('show', willOpen);
+            toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            chevron?.classList.toggle('rotated', willOpen);
+        });
+    });
+
     // Mobile categories chevron
     const catCollapse = document.getElementById('mobileCatCollapse');
     const catBtn = document.querySelector('[data-bs-target="#mobileCatCollapse"]');
@@ -174,14 +210,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (userToggle && userMenu) {
         userToggle.addEventListener('click', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             userMenu.classList.toggle('show');
             userToggle.parentElement.classList.toggle('show');
         });
         document.addEventListener('click', (e) => {
+            closeNavDropdowns();
             if (!userMenu.contains(e.target) && !userToggle.contains(e.target)) {
                 userMenu.classList.remove('show');
                 userToggle.parentElement.classList.remove('show');
             }
+        });
+    } else {
+        document.addEventListener('click', () => {
+            closeNavDropdowns();
         });
     }
 });

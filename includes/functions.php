@@ -12,7 +12,13 @@ if (!defined('APP_ROOT')) {
  */
 function getCategories(): array
 {
-    return [
+    static $categories = null;
+
+    if ($categories !== null) {
+        return $categories;
+    }
+
+    $fallbackCategories = [
         'Fiction',
         'Non-Fiction',
         'Mystery',
@@ -28,6 +34,24 @@ function getCategories(): array
         'Poetry',
         'Uncategorized'
     ];
+
+    try {
+        $config = include APP_ROOT . '/config/database.php';
+        $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
+        $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
+        $stmt = $pdo->query("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND TRIM(category) <> '' ORDER BY category ASC");
+        $dbCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (!empty($dbCategories)) {
+            $categories = array_values(array_unique(array_map('trim', $dbCategories)));
+            return $categories;
+        }
+    } catch (Throwable $e) {
+        // Fall back to the static list if the database is unavailable.
+    }
+
+    $categories = $fallbackCategories;
+    return $categories;
 }
 
 /**
@@ -278,10 +302,38 @@ function getAuthorAvatarUrl(string $name, int $size = 120): string
  */
 function getDummyBookCover(string $title = 'Book Title', string $author = 'Author', int $width = 400, int $height = 600): string
 {
-    $query = urlencode(trim($title . ' ' . $author . ' book cover'));
-    $size = (int)$width . 'x' . (int)$height;
-    $sig = abs(crc32($title . '|' . $author));
-    return "https://source.unsplash.com/featured/" . $size . "?" . $query . "&sig=" . $sig;
+    $width = max(120, min(800, (int)$width));
+    $height = max(180, min(1200, (int)$height));
+    $innerWidth = $width - 36;
+    $innerHeight = $height - 36;
+    $seed = md5($title . '|' . $author);
+    $palette = [
+        ['#3D405B', '#E07A5F'],
+        ['#2E8A40', '#81B29A'],
+        ['#6C5CE7', '#F2CC8F'],
+        ['#355C7D', '#C06C84'],
+        ['#264653', '#E9C46A']
+    ];
+    $colors = $palette[hexdec(substr($seed, 0, 2)) % count($palette)];
+    $titleText = htmlspecialchars(mb_strimwidth(trim($title) ?: 'Book Title', 0, 36, '...'), ENT_QUOTES, 'UTF-8');
+    $authorText = htmlspecialchars(mb_strimwidth(trim($author) ?: 'Unknown Author', 0, 28, '...'), ENT_QUOTES, 'UTF-8');
+    $svg = <<<SVG
+<svg xmlns="http://www.w3.org/2000/svg" width="{$width}" height="{$height}" viewBox="0 0 {$width} {$height}">
+  <defs>
+    <linearGradient id="coverGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="{$colors[0]}"/>
+      <stop offset="100%" stop-color="{$colors[1]}"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" rx="24" fill="url(#coverGradient)"/>
+  <rect x="18" y="18" width="{$innerWidth}" height="{$innerHeight}" rx="24" fill="none" stroke="rgba(255,255,255,0.2)"/>
+  <text x="50%" y="42%" text-anchor="middle" fill="#FFFFFF" font-family="Georgia, serif" font-size="28" font-weight="700">My Library</text>
+  <text x="50%" y="56%" text-anchor="middle" fill="#F8F5F0" font-family="Arial, sans-serif" font-size="22">{$titleText}</text>
+  <text x="50%" y="66%" text-anchor="middle" fill="#F8F5F0" font-family="Arial, sans-serif" font-size="16">{$authorText}</text>
+</svg>
+SVG;
+
+    return 'data:image/svg+xml;charset=UTF-8,' . rawurlencode($svg);
 }
 
 /**

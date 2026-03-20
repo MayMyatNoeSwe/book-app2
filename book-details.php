@@ -24,6 +24,7 @@ if (!$book) {
     header('Location: index.php');
     exit;
 }
+$currentBook = $book;
 
 // Handle form submissions
 $message = '';
@@ -563,6 +564,8 @@ include 'views/header.php';
     </div>
     <?php endif; ?>
 </div>
+
+<?php $book = $currentBook; ?>
 
 <!-- Review Modal -->
 <?php if (Auth::check()): ?>

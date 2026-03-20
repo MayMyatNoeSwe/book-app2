@@ -104,14 +104,12 @@ $heroCategory = $featuredBook ? $featuredBook->getCategory() : "Design Thinking"
 $heroPrice = "$32.78"; // Dummy price if not in DB
 $heroRating = $featuredBook ? $featuredBook->getAverageRating() : 4.5;
 $imageApiCover = function ($title, $author) {
-    $query = urlencode(trim($title . ' ' . $author . ' book cover'));
-    $sig = abs(crc32($title . '|' . $author));
-    return "https://source.unsplash.com/featured/700x1050?" . $query . "&sig=" . $sig;
+    return getDummyBookCover($title, $author, 700, 1050);
 };
 
 $heroCover = $featuredBook
     ? $imageApiCover($featuredBook->getTitle(), $featuredBook->getAuthor())
-    : "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=80";
+    : getDummyBookCover('Design', 'Keith Granet', 700, 1050);
 ?>
 
 <section class="home-hero">
@@ -172,7 +170,7 @@ $heroCover = $featuredBook
                         <img src="<?= $heroCover ?>" 
                              alt="<?= e($heroTitle) ?>" 
                              class="hero-cover"
-                             onerror="this.src='https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=80'">
+                             onerror="this.src='<?= getDummyBookCover($heroTitle, $heroAuthor, 700, 1050) ?>'">
                         <span class="hero-price-tag"><?= $heroPrice ?></span>
                     </div>
                     <div class="hero-float-card hero-parallax" data-depth="28">
@@ -272,6 +270,7 @@ $heroCover = $featuredBook
                     <a class="strip-cover" href="book-details.php?id=<?= e($book->getId()) ?>">
                         <img src="<?= $imageApiCover($book->getTitle(), $book->getAuthor()) ?>"
                             alt="<?= e($book->getTitle()) ?>"
+                            loading="lazy"
                             onerror="this.src='<?= getDummyBookCover($book->getTitle(), $book->getAuthor(), 220, 320) ?>'">
                     </a>
                     <div class="strip-meta">
@@ -323,10 +322,12 @@ $heroCover = $featuredBook
                                 if ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto)): ?>
                                     <img src="<?= baseUrl() ?>/public/uploads/authors/<?= e($authorPhoto) ?>" 
                                          alt="<?= e($authorName) ?>" 
+                                         loading="lazy"
                                          class="author-avatar">
                                 <?php else: ?>
                                     <img src="<?= $avatarUrl ?>" 
                                          alt="<?= e($authorName) ?>" 
+                                         loading="lazy"
                                          class="author-avatar">
                                 <?php endif; ?>
                             </div>
@@ -409,6 +410,7 @@ $heroCover = $featuredBook
                     <a class="strip-cover" href="book-details.php?id=<?= e($book->getId()) ?>">
                         <img src="<?= $imageApiCover($book->getTitle(), $book->getAuthor()) ?>"
                             alt="<?= e($book->getTitle()) ?>"
+                            loading="lazy"
                             onerror="this.src='<?= getDummyBookCover($book->getTitle(), $book->getAuthor(), 220, 320) ?>'">
                     </a>
                     <div class="strip-meta">
@@ -477,6 +479,7 @@ $heroCover = $featuredBook
                                     <img src="<?= $imageApiCover($book->getTitle(), $book->getAuthor()) ?>" 
                                          class="book-cover" 
                                          alt="<?= e($book->getTitle()) ?>"
+                                         loading="lazy"
                                          onerror="this.src='<?= getDummyBookCover($book->getTitle(), $book->getAuthor(), 300, 400) ?>'">
                                     <div class="book-overlay">
                                         <a href="book-details.php?id=<?= $book->getId() ?>" class="btn btn-light btn-sm">
@@ -617,95 +620,5 @@ $heroCover = $featuredBook
                     strip.scrollBy({ left: scrollByCard(), behavior: 'smooth' });
                 });
             });
-        });
-    </script>
-
-    <!-- Infinite Scroll Script -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            let page = 1;
-            const sentinel = document.getElementById('sentinel');
-            const grid = document.getElementById('book-grid');
-            let isLoading = false;
-            let hasMore = true;
-
-            // Get current filters from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const category = urlParams.get('cat') || '';
-            const search = urlParams.get('q') || '';
-
-            // Debug logging
-            console.log('Infinite scroll initialized with:', { category, search });
-
-            if (sentinel) {
-                const loadObserver = new IntersectionObserver(async (entries) => {
-                    if (entries[0].isIntersecting && !isLoading && hasMore) {
-                        isLoading = true;
-                        page++;
-
-                        console.log(`Loading page ${page} with search: "${search}", category: "${category}"`);
-
-                        try {
-                            const apiUrl = `api/load_books.php?page=${page}&cat=${encodeURIComponent(category)}&q=${encodeURIComponent(search)}`;
-                            console.log('API URL:', apiUrl);
-                            
-                            const response = await fetch(apiUrl);
-                            
-                            if (!response.ok) {
-                                throw new Error(`HTTP error! status: ${response.status}`);
-                            }
-                            
-                            const html = await response.text();
-                            console.log('API response length:', html.length);
-
-                            if (html.trim().length > 0) {
-                                // Create a temp container to parse HTML
-                                const temp = document.createElement('div');
-                                temp.innerHTML = html;
-
-                                // Get new elements and ensure they have animation classes
-                                const newElements = Array.from(temp.children);
-                                console.log('New elements loaded:', newElements.length);
-                                
-                                newElements.forEach((child) => {
-                                    // Ensure animation classes are present
-                                    if (!child.classList.contains('animate-on-scroll')) {
-                                        child.classList.add('animate-on-scroll');
-                                    }
-                                    
-                                    grid.appendChild(child);
-                                });
-
-                                // Use the global animation system to handle new elements
-                                setTimeout(() => {
-                                    if (window.BookLibraryAnimations) {
-                                        window.BookLibraryAnimations.observeNewElements(newElements);
-                                    }
-                                }, 50);
-
-                            } else {
-                                console.log('No more results, hiding sentinel');
-                                hasMore = false;
-                                sentinel.style.display = 'none';
-                            }
-                        } catch (error) {
-                            console.error('Error loading books:', error);
-                            // Show error message to user
-                            sentinel.innerHTML = `
-                                <div class="alert alert-warning text-center">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    Failed to load more books. <button class="btn btn-link p-0" onclick="location.reload()">Try again</button>
-                                </div>
-                            `;
-                        } finally {
-                            isLoading = false;
-                        }
-                    }
-                }, {
-                    rootMargin: '200px' // Load content before user reaches the bottom
-                });
-
-                loadObserver.observe(sentinel);
-            }
         });
     </script>
