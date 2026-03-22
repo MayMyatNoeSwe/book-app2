@@ -9,7 +9,8 @@ use App\Auth;
 
 // Redirect if already logged in
 if (Auth::check()) {
-    header('Location: index.php');
+    $redirect = Auth::isAdmin() ? 'admin/index.php' : 'index.php';
+    header('Location: ' . $redirect);
     exit;
 }
 
@@ -26,23 +27,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $remember = isset($_POST['remember']);
     
-    if (empty($usernameOrEmail) || empty($password)) {
-        $error = 'Please enter both username/email and password';
+    if (empty($usernameOrEmail)) {
+        $error = 'Please enter your username or email address';
+    } elseif (empty($password)) {
+        $error = 'Please enter your password to continue';
     } else {
-        $auth = new Auth($pdo);
-        if ($auth->attempt($usernameOrEmail, $password)) {
-            // Set remember me cookie if checked
+        // Fetch user manually for granular verification
+        $stmt = $pdo->prepare("SELECT id, username, email, password, role FROM users WHERE username = ? OR email = ? LIMIT 1");
+        $stmt->execute([$usernameOrEmail, $usernameOrEmail]);
+        $user = $stmt->fetch();
+        
+        if (!$user) {
+            $error = 'The account (' . htmlspecialchars($usernameOrEmail) . ') does not exist in our library system';
+        } elseif (!password_verify($password, $user['password'])) {
+            $error = 'Incorrect password. Please verify and try again';
+        } else {
+            // Successful login logic
+            session_regenerate_id(true);
+            $_SESSION['user_id']   = $user['id'];
+            $_SESSION['username']  = $user['username'];
+            $_SESSION['email']     = $user['email'];
+            $_SESSION['role']      = $user['role'];
+            $_SESSION['logged_in'] = true;
+            
             if ($remember) {
-                setcookie('remember_user', $usernameOrEmail, time() + (86400 * 30), '/'); // 30 days
+                setcookie('remember_user', $usernameOrEmail, time() + (86400 * 30), '/');
             }
             
-            // Redirect to intended page or home
             setFlashMessage("Welcome back! You have successfully signed in.", "success");
-            $redirect = $_GET['redirect'] ?? 'index.php';
+            $defaultRedirect = Auth::isAdmin() ? 'admin/index.php' : 'index.php';
+            $redirect = $_GET['redirect'] ?? $defaultRedirect;
             header('Location: ' . $redirect);
             exit;
-        } else {
-            $error = 'Invalid username/email or password';
         }
     }
 }
@@ -457,16 +473,16 @@ $rememberedUser = $_COOKIE['remember_user'] ?? '';
                     <p>Access your personal library dashboard</p>
                 </div>
                 
-                <form method="POST" action="" id="loginForm">
+                <form method="POST" action="" id="loginForm" autocomplete="off">
                     <div class="mb-4">
                         <input type="text" class="form-control" id="username_email" name="username_email" 
-                               placeholder="Username or Email" value="<?= htmlspecialchars($rememberedUser) ?>" required autofocus>
+                               placeholder="Username or Email" required autofocus autocomplete="off">
                     </div>
                     
                     <div class="mb-4">
                         <div class="password-container">
                             <input type="password" class="form-control" id="password" name="password" 
-                                   placeholder="Password" required>
+                                   placeholder="Password" required autocomplete="current-password">
                             <span class="password-toggle" onclick="togglePassword('password')">
                                 <i class="fas fa-eye" id="password-icon"></i>
                             </span>

@@ -62,541 +62,626 @@ if ($search) {
 include 'views/header.php';
 ?>
 
-<div class="author-list-container">
-    <!-- Breadcrumb -->
-    <div class="container-fluid">
-        <nav aria-label="breadcrumb" class="pt-3">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item">
-                    <a href="index.php" class="text-decoration-none">
-                        <i class="fas fa-home me-1"></i>Home
-                    </a>
-                </li>
-                <?php if ($search): ?>
-                    <li class="breadcrumb-item active" aria-current="page">Search Authors</li>
-                <?php elseif ($sortBy === 'book_count' && $sortOrder === 'desc'): ?>
-                    <li class="breadcrumb-item active" aria-current="page">Most Prolific Authors</li>
-                <?php elseif ($sortBy === 'avg_rating' && $sortOrder === 'desc'): ?>
-                    <li class="breadcrumb-item active" aria-current="page">Top Rated Authors</li>
-                <?php elseif ($sortBy === 'total_borrows' && $sortOrder === 'desc'): ?>
-                    <li class="breadcrumb-item active" aria-current="page">Most Popular Authors</li>
-                <?php else: ?>
-                    <li class="breadcrumb-item active" aria-current="page">All Authors</li>
-                <?php endif; ?>
+<style>
+/* ── Author Directory Premium Styles ── */
+.author-dir-hero {
+    position: relative;
+    padding: 70px 0 50px;
+    overflow: hidden;
+    background: 
+        radial-gradient(ellipse at 20% 50%, rgba(224,122,95,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 30%, rgba(129,178,154,0.10) 0%, transparent 50%),
+        var(--bookhouse-bg, #FFF3F0);
+}
+[data-bs-theme="dark"] .author-dir-hero {
+    background:
+        radial-gradient(ellipse at 20% 50%, rgba(224,122,95,0.15) 0%, transparent 55%),
+        radial-gradient(ellipse at 80% 30%, rgba(129,178,154,0.12) 0%, transparent 50%),
+        #0f172a;
+}
+.author-dir-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+}
+[data-bs-theme="dark"] .author-dir-hero::before {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
+.author-dir-hero .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(224,122,95,0.1);
+    color: var(--bookhouse-orange, #E07A5F);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(224,122,95,0.2);
+    margin-bottom: 16px;
+}
+.author-dir-hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    color: var(--bookhouse-text, #2D3436);
+    line-height: 1.15;
+    margin-bottom: 16px;
+}
+.author-dir-hero h1 span {
+    background: linear-gradient(135deg, var(--bookhouse-orange, #E07A5F), #c2664e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.author-dir-hero .hero-desc {
+    font-size: 1.05rem;
+    color: var(--bookhouse-text-muted, #636E72);
+    max-width: 540px;
+    line-height: 1.7;
+}
+.author-hero-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 28px;
+}
+.author-hero-stat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 16px;
+    padding: 12px 20px;
+    min-width: 140px;
+    transition: transform 0.2s ease;
+}
+.author-hero-stat:hover { transform: translateY(-2px); }
+[data-bs-theme="dark"] .author-hero-stat {
+    background: rgba(30,41,59,0.7);
+    border-color: rgba(255,255,255,0.08);
+}
+.author-hero-stat .stat-icon-wrap {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px;
+    font-size: 16px;
+}
+.stat-icon-wrap.blue   { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.stat-icon-wrap.green  { background: rgba(16,185,129,0.12); color: #10b981; }
+.stat-icon-wrap.yellow { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.author-hero-stat .stat-text .val { font-weight: 800; font-size: 18px; color: var(--bookhouse-text); }
+.author-hero-stat .stat-text .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--bookhouse-text-muted); font-weight: 600; }
+
+/* ── Filter Bar ── */
+.author-filter-bar {
+    background: var(--bookhouse-bg, #FFF3F0);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    padding: 16px 0;
+    position: sticky;
+    top: 68px;
+    z-index: 90;
+    transition: box-shadow 0.2s;
+}
+[data-bs-theme="dark"] .author-filter-bar {
+    background: #0f172a;
+    border-color: rgba(255,255,255,0.06);
+}
+.author-filter-bar.scrolled {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.filter-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0,0,0,0.03);
+    border-radius: 14px;
+    padding: 4px 16px;
+    border: 1px solid rgba(0,0,0,0.06);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.filter-search-wrap:focus-within {
+    border-color: var(--bookhouse-orange);
+    box-shadow: 0 0 0 3px rgba(224,122,95,0.1);
+}
+[data-bs-theme="dark"] .filter-search-wrap {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.08);
+}
+.filter-search-wrap input {
+    border: none; background: none; outline: none;
+    padding: 10px 0; flex: 1; font-size: 14px;
+    color: var(--bookhouse-text);
+}
+.filter-search-wrap input::placeholder { color: var(--bookhouse-text-muted); }
+.filter-pill-select {
+    appearance: none;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(0,0,0,0.02);
+    border-radius: 12px;
+    padding: 10px 36px 10px 14px;
+    font-size: 13px; font-weight: 600;
+    color: var(--bookhouse-text);
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23636e72' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    transition: border-color 0.2s;
+}
+[data-bs-theme="dark"] .filter-pill-select {
+    background-color: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+}
+.filter-pill-select:focus { border-color: var(--bookhouse-orange); outline: none; }
+.view-toggle-group {
+    display: inline-flex;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 12px;
+    overflow: hidden;
+}
+[data-bs-theme="dark"] .view-toggle-group { border-color: rgba(255,255,255,0.1); }
+.view-toggle-group button {
+    border: none; background: transparent;
+    padding: 9px 14px; color: var(--bookhouse-text-muted);
+    cursor: pointer; transition: all 0.2s;
+    font-size: 14px;
+}
+.view-toggle-group button:hover { color: var(--bookhouse-orange); }
+.view-toggle-group button.active {
+    background: var(--bookhouse-orange);
+    color: #fff;
+}
+.filter-results-text {
+    font-size: 13px; color: var(--bookhouse-text-muted);
+    display: flex; align-items: center; gap: 6px;
+}
+
+/* ── Author Cards ── */
+.author-grid { padding: 40px 0 60px; }
+.al-card {
+    background: #fff;
+    border-radius: 20px;
+    border: 1px solid rgba(0,0,0,0.06);
+    padding: 28px 20px 24px;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.al-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 50px rgba(61,64,91,0.12);
+}
+[data-bs-theme="dark"] .al-card {
+    background: #1e293b;
+    border-color: rgba(255,255,255,0.06);
+}
+[data-bs-theme="dark"] .al-card:hover {
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+.al-avatar {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-bottom: 16px;
+    border: 3px solid rgba(224,122,95,0.15);
+    box-shadow: 0 8px 20px rgba(224,122,95,0.1);
+    flex-shrink: 0;
+}
+.al-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.al-card h5 {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700; font-size: 15px;
+    color: var(--bookhouse-text);
+    margin-bottom: 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 100%;
+}
+.al-card .al-meta {
+    display: flex; gap: 8px; justify-content: center;
+    margin-bottom: 16px; flex-wrap: wrap;
+}
+.al-tag {
+    font-size: 11px; font-weight: 700;
+    padding: 4px 12px; border-radius: 999px;
+    letter-spacing: 0.3px;
+}
+.al-tag.books { background: rgba(59,130,246,0.1); color: #3b82f6; }
+.al-tag.rating { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.al-tag.borrows { background: rgba(16,185,129,0.1); color: #10b981; }
+[data-bs-theme="dark"] .al-tag.books { background: rgba(59,130,246,0.2); }
+[data-bs-theme="dark"] .al-tag.rating { background: rgba(245,158,11,0.2); }
+[data-bs-theme="dark"] .al-tag.borrows { background: rgba(16,185,129,0.2); }
+
+.al-card .al-actions { margin-top: auto; width: 100%; }
+.al-btn-profile {
+    display: block; width: 100%;
+    padding: 10px; border-radius: 12px;
+    font-size: 13px; font-weight: 700;
+    text-align: center; text-decoration: none;
+    color: var(--bookhouse-orange);
+    border: 1.5px solid rgba(224,122,95,0.25);
+    background: rgba(224,122,95,0.04);
+    transition: all 0.2s;
+}
+.al-btn-profile:hover {
+    background: var(--bookhouse-orange);
+    color: #fff; border-color: var(--bookhouse-orange);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(224,122,95,0.25);
+}
+
+/* ── List View ── */
+.al-list-item {
+    display: flex; align-items: center; gap: 20px;
+    background: #fff; border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.06);
+    padding: 20px 24px; margin-bottom: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.al-list-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 8px 30px rgba(61,64,91,0.08);
+}
+[data-bs-theme="dark"] .al-list-item {
+    background: #1e293b;
+    border-color: rgba(255,255,255,0.06);
+}
+.al-list-avatar { width: 64px; height: 64px; border-radius: 50%; overflow: hidden; flex-shrink: 0; border: 2px solid rgba(224,122,95,0.15); }
+.al-list-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.al-list-info { flex: 1; min-width: 0; }
+.al-list-info h5 { font-weight: 700; font-size: 16px; margin: 0 0 4px; color: var(--bookhouse-text); }
+.al-list-info .al-list-bio { font-size: 13px; color: var(--bookhouse-text-muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-list-tags { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+.al-list-action { flex-shrink: 0; }
+
+/* ── Empty State ── */
+.al-empty {
+    text-align: center; padding: 80px 20px;
+}
+.al-empty-icon {
+    width: 100px; height: 100px; margin: 0 auto 24px;
+    background: rgba(224,122,95,0.08);
+    border-radius: 50%; display: flex;
+    align-items: center; justify-content: center;
+    font-size: 40px; color: var(--bookhouse-orange);
+}
+.al-empty h3 { font-weight: 700; margin-bottom: 8px; color: var(--bookhouse-text); }
+.al-empty p { color: var(--bookhouse-text-muted); margin-bottom: 24px; }
+
+/* ── Pagination ── */
+.al-pagination {
+    padding: 30px 0 50px; display: flex;
+    justify-content: center; align-items: center; gap: 6px;
+}
+.al-pagination a, .al-pagination span {
+    width: 40px; height: 40px; display: inline-flex;
+    align-items: center; justify-content: center;
+    border-radius: 12px; font-weight: 700; font-size: 14px;
+    text-decoration: none; transition: all 0.2s;
+    color: var(--bookhouse-text-muted);
+    border: 1px solid rgba(0,0,0,0.06);
+}
+[data-bs-theme="dark"] .al-pagination a, [data-bs-theme="dark"] .al-pagination span {
+    border-color: rgba(255,255,255,0.08);
+}
+.al-pagination a:hover {
+    background: rgba(224,122,95,0.08);
+    color: var(--bookhouse-orange);
+    border-color: rgba(224,122,95,0.2);
+}
+.al-pagination .active {
+    background: var(--bookhouse-orange) !important;
+    color: #fff !important;
+    border-color: var(--bookhouse-orange) !important;
+}
+
+/* ── Responsive ── */
+@media (max-width: 767px) {
+    .author-dir-hero { padding: 50px 0 30px; text-align: center; }
+    .author-dir-hero .hero-desc { margin: 0 auto; }
+    .author-hero-stats { justify-content: center; }
+    .filter-row-top { flex-direction: column; gap: 12px !important; }
+    .filter-row-top > * { width: 100% !important; }
+    .al-list-item { flex-direction: column; text-align: center; gap: 12px; }
+    .al-list-tags { justify-content: center; }
+}
+</style>
+
+<!-- ═══════  HERO  ═══════ -->
+<section class="author-dir-hero">
+    <div class="container position-relative" style="z-index: 2;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-3" style="font-size: 13px;">
+                <li class="breadcrumb-item"><a href="index.php" class="text-decoration-none" style="color: var(--bookhouse-text-muted);">Home</a></li>
+                <li class="breadcrumb-item active fw-bold" style="color: var(--bookhouse-orange);">Authors</li>
             </ol>
         </nav>
-    </div>
 
-    <!-- Advanced Header -->
-    <div class="author-list-header">
-        <div class="container-fluid px-5 py-5">
-            <div class="row align-items-center py-4">
-                <div class="col-md-6">
-                    <h1 class="display-5 fw-bold mb-2">
-                        <i class="fas fa-user-edit me-3 text-primary"></i>
-                        <?php if ($search): ?>
-                            Author Search Results
-                        <?php elseif ($sortBy === 'book_count' && $sortOrder === 'desc'): ?>
-                            Most Prolific Authors
-                        <?php elseif ($sortBy === 'avg_rating' && $sortOrder === 'desc'): ?>
-                            Top Rated Authors
-                        <?php elseif ($sortBy === 'total_borrows' && $sortOrder === 'desc'): ?>
-                            Most Popular Authors
-                        <?php else: ?>
-                            Authors Directory
-                        <?php endif; ?>
-                    </h1>
-                    <p class="text-muted mb-0">
-                        <?php if ($search): ?>
-                            Results for "<?= e($search) ?>" - <?= number_format($totalAuthors) ?> authors found
-                        <?php elseif ($sortBy === 'book_count' && $sortOrder === 'desc'): ?>
-                            Authors with the most books in our collection
-                        <?php elseif ($sortBy === 'avg_rating' && $sortOrder === 'desc'): ?>
-                            Authors with the highest average ratings
-                        <?php elseif ($sortBy === 'total_borrows' && $sortOrder === 'desc'): ?>
-                            Most borrowed authors in our library
-                        <?php else: ?>
-                            Discover our collection of <?= number_format($authorStats['total_authors']) ?> talented authors
-                        <?php endif; ?>
-                    </p>
+        <div class="hero-badge"><i class="fas fa-feather-alt"></i> Explore Creators</div>
+
+        <h1>Discover World-Class <span>Authors</span></h1>
+
+        <p class="hero-desc">
+            Browse our curated directory of <?= number_format($authorStats['total_authors']) ?> talented authors.
+            <?php if ($search): ?>
+                Showing results for "<strong><?= e($search) ?></strong>".
+            <?php endif; ?>
+        </p>
+
+        <div class="author-hero-stats">
+            <div class="author-hero-stat">
+                <div class="stat-icon-wrap blue"><i class="fas fa-user-pen"></i></div>
+                <div class="stat-text">
+                    <div class="val"><?= number_format($totalAuthors) ?></div>
+                    <div class="lbl">Authors</div>
                 </div>
-                <div class="col-md-6 text-md-end">
-                    <div class="d-flex flex-wrap justify-content-md-end gap-2">
-                        <span class="badge bg-primary fs-6 px-3 py-2">
-                            <i class="fas fa-user-edit me-1"></i><?= number_format($totalAuthors) ?> Authors
-                        </span>
-                        <span class="badge bg-success fs-6 px-3 py-2">
-                            <i class="fas fa-book me-1"></i><?= number_format($authorStats['total_books']) ?> Books
-                        </span>
-                        <span class="badge bg-warning fs-6 px-3 py-2">
-                            <i class="fas fa-star me-1"></i><?= number_format($authorStats['avg_rating'], 1) ?> Avg Rating
-                        </span>
-                    </div>
+            </div>
+            <div class="author-hero-stat">
+                <div class="stat-icon-wrap green"><i class="fas fa-book-open"></i></div>
+                <div class="stat-text">
+                    <div class="val"><?= number_format($authorStats['total_books']) ?></div>
+                    <div class="lbl">Total Books</div>
+                </div>
+            </div>
+            <div class="author-hero-stat">
+                <div class="stat-icon-wrap yellow"><i class="fas fa-star"></i></div>
+                <div class="stat-text">
+                    <div class="val"><?= number_format($authorStats['avg_rating'], 1) ?></div>
+                    <div class="lbl">Avg Rating</div>
                 </div>
             </div>
         </div>
     </div>
+</section>
 
-    <!-- Advanced Search & Filters -->
-    <div class="filters-section bg-light border-bottom">
-        <div class="container-fluid">
-            <form method="GET" id="filterForm" class="py-4">
-                <div class="row g-3">
-                    <!-- Search -->
-                    <div class="col-lg-4">
-                        <div class="search-wrapper">
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text bg-white border-end-0">
-                                    <i class="fas fa-search text-muted"></i>
-                                </span>
-                                <input type="text" name="search" value="<?= e($search) ?>" 
-                                       class="form-control border-start-0 ps-0" 
-                                       placeholder="Search authors by name...">
-                                <?php if ($search): ?>
-                                <button type="button" class="btn btn-outline-secondary" onclick="clearSearch()">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Minimum Books Filter -->
-                    <div class="col-lg-2">
-                        <select name="min_books" class="form-select form-select-lg">
-                            <option value="1" <?= $minBooks === 1 ? 'selected' : '' ?>>Any Books</option>
-                            <option value="2" <?= $minBooks === 2 ? 'selected' : '' ?>>2+ Books</option>
-                            <option value="3" <?= $minBooks === 3 ? 'selected' : '' ?>>3+ Books</option>
-                            <option value="5" <?= $minBooks === 5 ? 'selected' : '' ?>>5+ Books</option>
-                            <option value="10" <?= $minBooks === 10 ? 'selected' : '' ?>>10+ Books</option>
-                        </select>
-                    </div>
-
-                    <!-- Sort Options -->
-                    <div class="col-lg-3">
-                        <select name="sort" class="form-select form-select-lg">
-                            <option value="name" <?= $sortBy === 'name' ? 'selected' : '' ?>>Author Name</option>
-                            <option value="book_count" <?= $sortBy === 'book_count' ? 'selected' : '' ?>>Number of Books</option>
-                            <option value="avg_rating" <?= $sortBy === 'avg_rating' ? 'selected' : '' ?>>Average Rating</option>
-                            <option value="total_borrows" <?= $sortBy === 'total_borrows' ? 'selected' : '' ?>>Popularity</option>
-                            <option value="latest_book" <?= $sortBy === 'latest_book' ? 'selected' : '' ?>>Latest Book</option>
-                        </select>
-                    </div>
-
-                    <!-- Sort Order & Actions -->
-                    <div class="col-lg-3">
-                        <div class="d-flex gap-2">
-                            <button type="button" class="btn btn-lg btn-outline-secondary flex-fill" 
-                                    onclick="toggleSortOrder()" title="Sort Order">
-                                <i class="fas fa-sort-<?= $sortOrder === 'asc' ? 'up' : 'down' ?>"></i>
-                                <?= $sortOrder === 'asc' ? 'A-Z' : 'Z-A' ?>
-                            </button>
-                            <button type="submit" class="btn btn-lg btn-primary flex-fill">
-                                <i class="fas fa-filter me-1"></i>Filter
-                            </button>
-                        </div>
-                        <input type="hidden" name="order" value="<?= $sortOrder ?>" id="sortOrder">
-                        <input type="hidden" name="view" value="<?= $viewMode ?>" id="viewMode">
-                        <input type="hidden" name="limit" value="<?= $limit ?>" id="limitInput">
-                    </div>
+<!-- ═══════  FILTER BAR  ═══════ -->
+<div class="author-filter-bar" id="filterBar">
+    <div class="container">
+        <form method="GET" id="filterForm">
+            <div class="d-flex flex-wrap align-items-center gap-3 filter-row-top">
+                <!-- Search -->
+                <div class="filter-search-wrap" style="flex: 1; min-width: 200px;">
+                    <i class="fas fa-search" style="color: var(--bookhouse-text-muted); font-size: 14px;"></i>
+                    <input type="text" name="search" value="<?= e($search) ?>" placeholder="Search by name...">
+                    <?php if ($search): ?>
+                        <button type="button" onclick="clearSearch()" style="border:none;background:none;cursor:pointer;color:var(--bookhouse-text-muted);"><i class="fas fa-times"></i></button>
+                    <?php endif; ?>
                 </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- View Controls & Results Info -->
-    <div class="view-controls-section bg-white border-bottom">
-        <div class="container-fluid">
-            <div class="row align-items-center py-3">
-                <div class="col-md-6">
-                    <div class="results-info">
-                        <span class="text-muted">
-                            Showing <?= count($authors) ?> of <?= number_format($totalAuthors) ?> authors
-                            <?php if ($search): ?>
-                                for "<strong><?= e($search) ?></strong>"
-                            <?php endif; ?>
-                            <?php if ($minBooks > 1): ?>
-                                with <strong><?= $minBooks ?>+</strong> books
-                            <?php endif; ?>
-                        </span>
-                    </div>
+                <!-- Sort -->
+                <select name="sort" class="filter-pill-select">
+                    <option value="name" <?= $sortBy === 'name' ? 'selected' : '' ?>>Name</option>
+                    <option value="book_count" <?= $sortBy === 'book_count' ? 'selected' : '' ?>>Books</option>
+                    <option value="avg_rating" <?= $sortBy === 'avg_rating' ? 'selected' : '' ?>>Rating</option>
+                    <option value="total_borrows" <?= $sortBy === 'total_borrows' ? 'selected' : '' ?>>Popularity</option>
+                </select>
+
+                <!-- Order Toggle -->
+                <button type="button" class="filter-pill-select" onclick="toggleSortOrder()" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-arrow-<?= $sortOrder === 'asc' ? 'up' : 'down' ?>-short-wide"></i>
+                    <?= $sortOrder === 'asc' ? 'A→Z' : 'Z→A' ?>
+                </button>
+
+                <!-- View Toggle -->
+                <div class="view-toggle-group">
+                    <button type="button" class="<?= $viewMode === 'grid' ? 'active' : '' ?>" onclick="changeView('grid')" title="Grid"><i class="fas fa-th-large"></i></button>
+                    <button type="button" class="<?= $viewMode === 'list' ? 'active' : '' ?>" onclick="changeView('list')" title="List"><i class="fas fa-bars"></i></button>
                 </div>
-                <div class="col-md-6">
-                    <div class="d-flex justify-content-md-end align-items-center gap-3">
-                        <!-- Items per page -->
-                        <div class="d-flex align-items-center">
-                            <label class="form-label mb-0 me-2 text-muted">Show:</label>
-                            <select class="form-select form-select-sm" style="width: auto;" onchange="changeLimit(this.value)">
-                                <option value="12" <?= $limit === 12 ? 'selected' : '' ?>>12</option>
-                                <option value="24" <?= $limit === 24 ? 'selected' : '' ?>>24</option>
-                                <option value="36" <?= $limit === 36 ? 'selected' : '' ?>>36</option>
-                                <option value="48" <?= $limit === 48 ? 'selected' : '' ?>>48</option>
-                            </select>
-                        </div>
 
-                        <!-- View Mode Toggle -->
-                        <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-outline-secondary <?= $viewMode === 'grid' ? 'active' : '' ?>" 
-                                    onclick="changeView('grid')" title="Grid View">
-                                <i class="fas fa-th"></i>
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary <?= $viewMode === 'list' ? 'active' : '' ?>" 
-                                    onclick="changeView('list')" title="List View">
-                                <i class="fas fa-list"></i>
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary <?= $viewMode === 'compact' ? 'active' : '' ?>" 
-                                    onclick="changeView('compact')" title="Compact View">
-                                <i class="fas fa-th-list"></i>
-                            </button>
-                        </div>
-                    </div>
+                <!-- Results count -->
+                <div class="filter-results-text ms-auto">
+                    <strong style="color: var(--bookhouse-text);"><?= count($authors) ?></strong> of <?= number_format($totalAuthors) ?>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Authors Display -->
-    <div class="authors-section">
-        <div class="container-fluid">
-            <?php if (!empty($authors)): ?>
-                
-                <!-- Grid View -->
-                <?php if ($viewMode === 'grid'): ?>
-                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4 py-4" id="authorsGrid">
-                    <?php foreach ($authors as $author): ?>
-                    <div class="col animate-on-scroll">
-                        <div class="author-card-premium h-100">
-                            <div class="author-photo-wrapper">
-                                <?php 
+            <input type="hidden" name="order" value="<?= $sortOrder ?>" id="sortOrder">
+            <input type="hidden" name="view" value="<?= $viewMode ?>" id="viewMode">
+            <input type="hidden" name="limit" value="<?= $limit ?>" id="limitInput">
+        </form>
+    </div>
+</div>
+
+<!-- ═══════  AUTHORS GRID / LIST  ═══════ -->
+<div class="author-grid">
+    <div class="container">
+        <?php if (!empty($authors)): ?>
+
+            <?php if ($viewMode === 'grid'): ?>
+            <div class="row row-cols-2 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-4">
+                <?php foreach ($authors as $author):
+                    $authorPhoto = $author['author_photo'] ?? null;
+                    $authorName = $author['author'];
+                    $avatarUrl = getAuthorAvatarUrl($authorName, 150);
+                    $imgSrc = ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto))
+                        ? e(baseUrl()) . '/public/uploads/authors/' . e($authorPhoto)
+                        : $avatarUrl;
+                ?>
+                <div class="col">
+                    <div class="al-card">
+                        <div class="al-avatar">
+                            <img src="<?= $imgSrc ?>" alt="<?= e($authorName) ?>" loading="lazy">
+                        </div>
+                        <h5 title="<?= e($authorName) ?>"><?= e($authorName) ?></h5>
+                        <div class="al-meta">
+                            <span class="al-tag books"><?= $author['book_count'] ?> Books</span>
+                            <span class="al-tag rating"><?= number_format($author['avg_rating'], 1) ?> ★</span>
+                        </div>
+                        <div class="al-actions">
+                            <a href="author-details.php?author=<?= urlencode($authorName) ?>" class="al-btn-profile">
+                                <i class="fas fa-arrow-right me-1"></i> View Profile
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($viewMode === 'list'): ?>
+            <div class="py-3">
+                <?php foreach ($authors as $author):
+                    $authorPhoto = $author['author_photo'] ?? null;
+                    $authorName = $author['author'];
+                    $avatarUrl = getAuthorAvatarUrl($authorName, 100);
+                    $imgSrc = ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto))
+                        ? e(baseUrl()) . '/public/uploads/authors/' . e($authorPhoto)
+                        : $avatarUrl;
+                ?>
+                <div class="al-list-item">
+                    <div class="al-list-avatar">
+                        <img src="<?= $imgSrc ?>" alt="<?= e($authorName) ?>" loading="lazy">
+                    </div>
+                    <div class="al-list-info">
+                        <h5><?= e($authorName) ?></h5>
+                        <?php if (!empty($author['author_bio'])): ?>
+                            <p class="al-list-bio"><?= e(substr($author['author_bio'], 0, 120)) ?><?= strlen($author['author_bio']) > 120 ? '...' : '' ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="al-list-tags">
+                        <span class="al-tag books"><?= $author['book_count'] ?> Books</span>
+                        <span class="al-tag rating"><?= number_format($author['avg_rating'], 1) ?> ★</span>
+                        <span class="al-tag borrows"><?= $author['total_borrows'] ?> Borrows</span>
+                    </div>
+                    <div class="al-list-action">
+                        <a href="author-details.php?author=<?= urlencode($authorName) ?>" class="al-btn-profile" style="padding: 8px 20px; white-space: nowrap;">
+                            View Profile
+                        </a>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($viewMode === 'compact'): ?>
+            <div class="py-4">
+                <div class="table-responsive" style="border-radius: 16px; overflow: hidden; border: 1px solid rgba(0,0,0,0.06);">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead style="background: var(--bookhouse-orange); color: #fff;">
+                            <tr>
+                                <th class="py-3 ps-4">Author</th>
+                                <th class="py-3 text-center">Books</th>
+                                <th class="py-3 text-center">Rating</th>
+                                <th class="py-3 text-center">Borrows</th>
+                                <th class="py-3 pe-4 text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($authors as $author):
                                 $authorPhoto = $author['author_photo'] ?? null;
                                 $authorName = $author['author'];
-                                $avatarUrl = getAuthorAvatarUrl($authorName, 150);
-                                
-                                if ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto)): ?>
-                                    <img src="<?= baseUrl() ?>/public/uploads/authors/<?= e($authorPhoto) ?>" 
-                                         alt="<?= e($authorName) ?>" class="author-photo">
-                                <?php else: ?>
-                                    <img src="<?= $avatarUrl ?>" 
-                                         alt="<?= e($authorName) ?>" class="author-photo">
-                                <?php endif; ?>
-                                
-                                <!-- Stats Badge -->
-                                <div class="stats-badge">
-                                    <span class="badge bg-primary"><?= $author['book_count'] ?> Books</span>
-                                </div>
-
-                                <!-- Quick Actions -->
-                                <div class="quick-actions">
-                                    <a href="author-details.php?author=<?= urlencode($authorName) ?>" 
-                                       class="btn btn-sm btn-info" title="View Profile">
-                                        <i class="fas fa-user"></i>
+                                $avatarUrl = getAuthorAvatarUrl($authorName, 50);
+                                $imgSrc = ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto))
+                                    ? e(baseUrl()) . '/public/uploads/authors/' . e($authorPhoto)
+                                    : $avatarUrl;
+                            ?>
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <img src="<?= $imgSrc ?>" alt="<?= e($authorName) ?>" 
+                                             style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(224,122,95,0.15);" loading="lazy">
+                                        <strong style="color: var(--bookhouse-text);"><?= e($authorName) ?></strong>
+                                    </div>
+                                </td>
+                                <td class="text-center"><span class="al-tag books"><?= $author['book_count'] ?></span></td>
+                                <td class="text-center"><span class="al-tag rating"><?= number_format($author['avg_rating'], 1) ?> ★</span></td>
+                                <td class="text-center"><span class="al-tag borrows"><?= $author['total_borrows'] ?></span></td>
+                                <td class="pe-4 text-end">
+                                    <a href="author-details.php?author=<?= urlencode($authorName) ?>" class="al-btn-profile" style="display:inline-block; width:auto; padding: 6px 16px;">
+                                        Profile
                                     </a>
-                                    <a href="book-list.php?search=<?= urlencode($authorName) ?>" 
-                                       class="btn btn-sm btn-primary" title="View Books">
-                                        <i class="fas fa-book"></i>
-                                    </a>
-                                    <?php if (!empty($author['author_bio'])): ?>
-                                    <button class="btn btn-sm btn-info" onclick="showAuthorBio('<?= e($authorName) ?>', '<?= e($author['author_bio']) ?>')" title="View Bio">
-                                        <i class="fas fa-info"></i>
-                                    </button>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            
-                            <div class="author-info">
-                                <h6 class="author-name" title="<?= e($authorName) ?>">
-                                    <?= e($authorName) ?>
-                                </h6>
-                                
-                                <div class="author-stats">
-                                    <div class="stat-item">
-                                        <span class="stat-value"><?= $author['book_count'] ?></span>
-                                        <span class="stat-label">Books</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-value"><?= number_format($author['avg_rating'], 1) ?></span>
-                                        <span class="stat-label">Rating</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-value"><?= $author['total_borrows'] ?></span>
-                                        <span class="stat-label">Borrows</span>
-                                    </div>
-                                </div>
-
-                                <?php if (!empty($author['latest_book_title'])): ?>
-                                <div class="latest-book">
-                                    <small class="text-muted">Latest: <?= e($author['latest_book_title']) ?></small>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-
-                <!-- List View -->
-                <?php if ($viewMode === 'list'): ?>
-                <div class="py-4">
-                    <?php foreach ($authors as $author): ?>
-                    <div class="author-list-item animate-on-scroll">
-                        <div class="row align-items-center">
-                            <div class="col-md-2">
-                                <div class="author-photo-medium">
-                                    <?php 
-                                    $authorPhoto = $author['author_photo'] ?? null;
-                                    $authorName = $author['author'];
-                                    $avatarUrl = getAuthorAvatarUrl($authorName, 100);
-                                    
-                                    if ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto)): ?>
-                                        <img src="<?= baseUrl() ?>/public/uploads/authors/<?= e($authorPhoto) ?>" 
-                                             alt="<?= e($authorName) ?>" class="img-fluid rounded-circle">
-                                    <?php else: ?>
-                                        <img src="<?= $avatarUrl ?>" 
-                                             alt="<?= e($authorName) ?>" class="img-fluid rounded-circle">
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <h5 class="mb-1"><?= e($authorName) ?></h5>
-                                <?php if (!empty($author['author_bio'])): ?>
-                                <p class="text-muted mb-2"><?= e(substr($author['author_bio'], 0, 120)) ?><?= strlen($author['author_bio']) > 120 ? '...' : '' ?></p>
-                                <?php endif; ?>
-                                <?php if (!empty($author['latest_book_title'])): ?>
-                                <div class="latest-book-info">
-                                    <small class="text-primary">Latest: <?= e($author['latest_book_title']) ?> (<?= $author['latest_book_year'] ?>)</small>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="col-md-2 text-center">
-                                <div class="author-stats-list">
-                                    <div class="stat-row">
-                                        <span class="badge bg-primary"><?= $author['book_count'] ?> Books</span>
-                                    </div>
-                                    <div class="stat-row">
-                                        <span class="badge bg-warning"><?= number_format($author['avg_rating'], 1) ?> ★</span>
-                                    </div>
-                                    <div class="stat-row">
-                                        <span class="badge bg-success"><?= $author['total_borrows'] ?> Borrows</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-2 text-end">
-                                <div class="btn-group-vertical">
-                                    <a href="author-details.php?author=<?= urlencode($authorName) ?>" 
-                                       class="btn btn-outline-info btn-sm">
-                                        <i class="fas fa-user me-1"></i>View Profile
-                                    </a>
-                                    <a href="book-list.php?search=<?= urlencode($authorName) ?>" 
-                                       class="btn btn-outline-primary btn-sm">
-                                        <i class="fas fa-book me-1"></i>View Books
-                                    </a>
-                                    <?php if (!empty($author['author_bio'])): ?>
-                                    <button class="btn btn-outline-info btn-sm" onclick="showAuthorBio('<?= e($authorName) ?>', '<?= e($author['author_bio']) ?>')">
-                                        <i class="fas fa-info me-1"></i>Biography
-                                    </button>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-
-                <!-- Compact View -->
-                <?php if ($viewMode === 'compact'): ?>
-                <div class="py-4">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Photo</th>
-                                    <th>Author</th>
-                                    <th>Books</th>
-                                    <th>Rating</th>
-                                    <th>Borrows</th>
-                                    <th>Latest Book</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($authors as $author): ?>
-                                <tr class="animate-on-scroll">
-                                    <td>
-                                        <div class="author-photo-tiny">
-                                            <?php 
-                                            $authorPhoto = $author['author_photo'] ?? null;
-                                            $authorName = $author['author'];
-                                            $avatarUrl = getAuthorAvatarUrl($authorName, 50);
-                                            
-                                            if ($authorPhoto && file_exists(__DIR__ . '/public/uploads/authors/' . $authorPhoto)): ?>
-                                                <img src="<?= baseUrl() ?>/public/uploads/authors/<?= e($authorPhoto) ?>" 
-                                                     alt="<?= e($authorName) ?>" class="img-fluid rounded-circle">
-                                            <?php else: ?>
-                                                <img src="<?= $avatarUrl ?>" 
-                                                     alt="<?= e($authorName) ?>" class="img-fluid rounded-circle">
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <strong><?= e($authorName) ?></strong>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-primary"><?= $author['book_count'] ?></span>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-warning"><?= number_format($author['avg_rating'], 1) ?> ★</span>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-success"><?= $author['total_borrows'] ?></span>
-                                    </td>
-                                    <td>
-                                        <?php if (!empty($author['latest_book_title'])): ?>
-                                            <small><?= e($author['latest_book_title']) ?> (<?= $author['latest_book_year'] ?>)</small>
-                                        <?php else: ?>
-                                            <small class="text-muted">-</small>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="author-details.php?author=<?= urlencode($authorName) ?>" 
-                                               class="btn btn-outline-info" title="View Profile">
-                                                <i class="fas fa-user"></i>
-                                            </a>
-                                            <a href="book-list.php?search=<?= urlencode($authorName) ?>" 
-                                               class="btn btn-outline-primary" title="View Books">
-                                                <i class="fas fa-book"></i>
-                                            </a>
-                                            <?php if (!empty($author['author_bio'])): ?>
-                                            <button class="btn btn-outline-info" onclick="showAuthorBio('<?= e($authorName) ?>', '<?= e($author['author_bio']) ?>')" title="Biography">
-                                                <i class="fas fa-info"></i>
-                                            </button>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-            <?php else: ?>
-                <!-- Empty State -->
-                <div class="empty-state text-center py-5">
-                    <div class="empty-icon mb-4">
-                        <i class="fas fa-user-edit fa-4x text-muted opacity-50"></i>
-                    </div>
-                    <h3 class="text-muted">No authors found</h3>
-                    <p class="text-muted mb-4">
-                        <?php if ($search): ?>
-                            No authors match your search for "<strong><?= e($search) ?></strong>".
-                        <?php elseif ($minBooks > 1): ?>
-                            No authors found with <?= $minBooks ?>+ books.
-                        <?php else: ?>
-                            No authors are currently available.
-                        <?php endif; ?>
-                    </p>
-                    <div class="d-flex justify-content-center gap-2">
-                        <a href="author-list.php" class="btn btn-outline-primary">
-                            <i class="fas fa-refresh me-1"></i>Clear Filters
-                        </a>
-                        <a href="index.php" class="btn btn-primary">
-                            <i class="fas fa-home me-1"></i>Back to Home
-                        </a>
-                    </div>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- Advanced Pagination -->
-    <?php if ($totalPages > 1): ?>
-    <div class="pagination-section bg-light border-top">
-        <div class="container-fluid">
-            <div class="row align-items-center py-4">
-                <div class="col-md-6">
-                    <div class="pagination-info">
-                        <span class="text-muted">
-                            Page <?= $page ?> of <?= $totalPages ?> 
-                            (<?= number_format($totalAuthors) ?> total authors)
-                        </span>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <nav aria-label="Author pagination">
-                        <ul class="pagination justify-content-md-end mb-0">
-                            <!-- First Page -->
-                            <?php if ($page > 2): ?>
-                            <li class="page-item">
-                                <a class="page-link" href="<?= buildAuthorUrl(['page' => 1]) ?>">
-                                    <i class="fas fa-angle-double-left"></i>
-                                </a>
-                            </li>
-                            <?php endif; ?>
-
-                            <!-- Previous Page -->
-                            <?php if ($hasPrevPage): ?>
-                            <li class="page-item">
-                                <a class="page-link" href="<?= buildAuthorUrl(['page' => $page - 1]) ?>">
-                                    <i class="fas fa-angle-left"></i> Previous
-                                </a>
-                            </li>
-                            <?php endif; ?>
-
-                            <!-- Page Numbers -->
-                            <?php
-                            $startPage = max(1, $page - 2);
-                            $endPage = min($totalPages, $page + 2);
-                            
-                            for ($i = $startPage; $i <= $endPage; $i++): ?>
-                            <li class="page-item <?= $i === $page ? 'active' : '' ?>">
-                                <a class="page-link" href="<?= buildAuthorUrl(['page' => $i]) ?>"><?= $i ?></a>
-                            </li>
-                            <?php endfor; ?>
-
-                            <!-- Next Page -->
-                            <?php if ($hasNextPage): ?>
-                            <li class="page-item">
-                                <a class="page-link" href="<?= buildAuthorUrl(['page' => $page + 1]) ?>">
-                                    Next <i class="fas fa-angle-right"></i>
-                                </a>
-                            </li>
-                            <?php endif; ?>
-
-                            <!-- Last Page -->
-                            <?php if ($page < $totalPages - 1): ?>
-                            <li class="page-item">
-                                <a class="page-link" href="<?= buildAuthorUrl(['page' => $totalPages]) ?>">
-                                    <i class="fas fa-angle-double-right"></i>
-                                </a>
-                            </li>
-                            <?php endif; ?>
-                        </ul>
-                    </nav>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
+            <?php endif; ?>
+
+        <?php else: ?>
+            <!-- Empty State -->
+            <div class="al-empty">
+                <div class="al-empty-icon"><i class="fas fa-user-pen"></i></div>
+                <h3>No Authors Found</h3>
+                <p>
+                    <?php if ($search): ?>
+                        No authors match "<strong><?= e($search) ?></strong>".
+                    <?php else: ?>
+                        No authors are currently available.
+                    <?php endif; ?>
+                </p>
+                <div class="d-flex justify-content-center gap-3">
+                    <a href="author-list.php" class="al-btn-profile" style="display:inline-block; width:auto; padding: 10px 28px;">
+                        <i class="fas fa-rotate-right me-1"></i> Clear Filters
+                    </a>
+                    <a href="index.php" class="al-btn-profile" style="display:inline-block; width:auto; padding: 10px 28px; background: var(--bookhouse-orange); color: #fff; border-color: var(--bookhouse-orange);">
+                        <i class="fas fa-house me-1"></i> Home
+                    </a>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- ═══════  PAGINATION  ═══════ -->
+        <?php if ($totalPages > 1): ?>
+        <div class="al-pagination">
+            <?php if ($page > 2): ?>
+                <a href="<?= buildAuthorUrl(['page' => 1]) ?>"><i class="fas fa-angles-left"></i></a>
+            <?php endif; ?>
+            <?php if ($hasPrevPage): ?>
+                <a href="<?= buildAuthorUrl(['page' => $page - 1]) ?>"><i class="fas fa-chevron-left"></i></a>
+            <?php endif; ?>
+
+            <?php
+            $startPage = max(1, $page - 2);
+            $endPage = min($totalPages, $page + 2);
+            for ($i = $startPage; $i <= $endPage; $i++): ?>
+                <?php if ($i === $page): ?>
+                    <span class="active"><?= $i ?></span>
+                <?php else: ?>
+                    <a href="<?= buildAuthorUrl(['page' => $i]) ?>"><?= $i ?></a>
+                <?php endif; ?>
+            <?php endfor; ?>
+
+            <?php if ($hasNextPage): ?>
+                <a href="<?= buildAuthorUrl(['page' => $page + 1]) ?>"><i class="fas fa-chevron-right"></i></a>
+            <?php endif; ?>
+            <?php if ($page < $totalPages - 1): ?>
+                <a href="<?= buildAuthorUrl(['page' => $totalPages]) ?>"><i class="fas fa-angles-right"></i></a>
+            <?php endif; ?>
         </div>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
 </div>
 
 <!-- Author Biography Modal -->
 <div class="modal fade" id="authorBioModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="authorBioTitle">Author Biography</h5>
+        <div class="modal-content" style="border-radius: 20px; border: none;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold" id="authorBioTitle">Author Biography</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div id="authorBioContent"></div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="viewAuthorBooks">View Books</button>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn rounded-pill px-4" id="viewAuthorBooks" style="background: var(--bookhouse-orange); color: #fff;">View Books</button>
             </div>
         </div>
     </div>
@@ -650,7 +735,7 @@ let currentAuthorName = '';
 
 function showAuthorBio(authorName, bio) {
     currentAuthorName = authorName;
-    document.getElementById('authorBioTitle').textContent = authorName + ' - Biography';
+    document.getElementById('authorBioTitle').textContent = authorName + ' — Biography';
     document.getElementById('authorBioContent').innerHTML = '<p>' + bio + '</p>';
     
     const modal = new bootstrap.Modal(document.getElementById('authorBioModal'));
@@ -663,13 +748,37 @@ document.getElementById('viewAuthorBooks').addEventListener('click', function() 
     }
 });
 
-// Auto-submit form on filter changes
+// Auto-submit on sort change
 document.addEventListener('DOMContentLoaded', function() {
-    const selects = document.querySelectorAll('select[name="min_books"], select[name="sort"]');
-    selects.forEach(select => {
-        select.addEventListener('change', function() {
-            document.getElementById('filterForm').submit();
+    document.querySelectorAll('select[name="sort"]').forEach(s => {
+        s.addEventListener('change', () => document.getElementById('filterForm').submit());
+    });
+
+    // Sticky filter bar shadow
+    const bar = document.getElementById('filterBar');
+    if (bar) {
+        window.addEventListener('scroll', () => {
+            bar.classList.toggle('scrolled', window.scrollY > 200);
         });
+    }
+
+    // Fade-in animation
+    const cards = document.querySelectorAll('.al-card, .al-list-item');
+    const obs = new IntersectionObserver((entries) => {
+        entries.forEach((entry, i) => {
+            if (entry.isIntersecting) {
+                entry.target.style.transition = `opacity 0.5s ${i * 0.05}s ease, transform 0.5s ${i * 0.05}s ease`;
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+                obs.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.1 });
+
+    cards.forEach(c => {
+        c.style.opacity = '0';
+        c.style.transform = 'translateY(20px)';
+        obs.observe(c);
     });
 });
 </script>

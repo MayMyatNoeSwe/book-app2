@@ -201,7 +201,33 @@ function isLoggedIn(): bool
  */
 function isAdmin(): bool
 {
-    return $_SESSION['role'] ?? '' === 'admin';
+    return ($_SESSION['role'] ?? '') === 'admin';
+}
+
+/**
+ * Require admin access or redirect
+ */
+function requireAdmin(): void
+{
+    if (!isLoggedIn()) {
+        setFlashMessage('Please login first.', 'warning');
+        redirect(baseUrl() . '/login.php');
+    }
+    if (!isAdmin()) {
+        setFlashMessage('Access denied. Admin privileges required.', 'danger');
+        redirect(baseUrl() . '/index.php');
+    }
+}
+
+/**
+ * Render a status badge
+ * @param string $status
+ * @param string $type success, warning, danger, info
+ * @return string
+ */
+function renderStatusBadge(string $status, string $type = 'info'): string
+{
+    return "<span class=\"badge bg-{$type} rounded-pill\">" . e(ucfirst($status)) . "</span>";
 }
 
 /**
@@ -225,8 +251,19 @@ function baseUrl(): string
 {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
     $host = $_SERVER['HTTP_HOST'];
-    $script = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
-    return rtrim($protocol . $host . $script, '/');
+    
+    // Get the script's directory relative to the host
+    $scriptPath = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
+    
+    // If we're inside the 'admin' subfolder, move up to find the true project root
+    if (strpos($scriptPath, '/admin') !== false) {
+        $scriptPath = rtrim(str_replace('/admin', '', $scriptPath), '/');
+    }
+    
+    // Ensure the path is correct even if project is at root /
+    if ($scriptPath === '') $scriptPath = '/';
+    
+    return rtrim($protocol . $host . $scriptPath, '/');
 }
 
 /**

@@ -116,10 +116,10 @@ class Book
             'title' => $this->title,
             'author' => $this->author,
             'year' => $this->year,
-            'coverImage' => $this->coverImage,
+            'cover_image' => $this->coverImage,
             'category' => $this->category,
-            'totalCopies' => $this->totalCopies,
-            'availableCopies' => $this->availableCopies,
+            'total_copies' => $this->totalCopies,
+            'available_copies' => $this->availableCopies,
         ];
     }
     public static function fromArray(array $data): self
@@ -128,8 +128,8 @@ class Book
             $data['title'],
             $data['author'],
             $data['year'],
-            $data['totalCopies'] ?? 1,
-            $data['coverImage'] ?? null,
+            $data['total_copies'] ?? 1,
+            $data['cover_image'] ?? null,
             $data['category'] ?? 'Uncategorized',
             $data['id'] ?? null
         );
