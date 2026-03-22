@@ -302,9 +302,7 @@ function addToCart(bookId, quantity = 1) {
                     <div class="ft-heading">Account</div>
                     <ul class="ft-links">
                         <?php if (Auth::check()): ?>
-                            <li><a href="<?= baseUrl() ?>/profile.php">My Profile</a></li>
-                            <li><a href="<?= baseUrl() ?>/history.php">My History</a></li>
-                            <li><a href="<?= baseUrl() ?>/reservations.php">Reservations</a></li>
+                            <li><a href="<?= baseUrl() ?>/user-details.php">My Dashboard</a></li>
                             <li><a href="<?= baseUrl() ?>/logout.php">Logout</a></li>
                         <?php else: ?>
                             <li><a href="<?= baseUrl() ?>/login.php">Login</a></li>

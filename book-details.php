@@ -523,10 +523,9 @@ include 'views/header.php';
                                     <button type="submit" class="bd-btn bd-btn-danger-outline"><i class="fas fa-undo"></i> Return</button>
                                 </form>
                             <?php elseif ($book->isAvailable()): ?>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="action" value="borrow">
-                                    <button type="submit" class="bd-btn bd-btn-primary"><i class="fas fa-book"></i> Borrow Now</button>
-                                </form>
+                                <button type="button" class="bd-btn bd-btn-primary" data-bs-toggle="modal" data-bs-target="#borrowConfirmModal">
+                                    <i class="fas fa-book"></i> Borrow Now
+                                </button>
                                 <button onclick="addToCart(<?= $bookId ?>)" class="bd-btn bd-btn-outline"><i class="fas fa-shopping-cart"></i> Add to Cart</button>
                             <?php else: ?>
                                 <form method="POST" style="display:inline;">
@@ -704,6 +703,50 @@ include 'views/header.php';
     </div>
 </div>
 <?php endif; ?>
+
+<!-- Borrow Confirmation Modal -->
+<div class="modal fade bd-modal" id="borrowConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+        <div class="modal-content text-center shadow-lg" style="border-radius: 20px; border: none;">
+            <div class="modal-header d-flex flex-column align-items-start position-relative" style="background: #d48b71; padding: 30px 24px 20px; color: #fff;">
+                <button type="button" class="btn-close btn-close-white position-absolute" data-bs-dismiss="modal" style="top: 20px; right: 20px;"></button>
+                <div class="d-flex align-items-center gap-3">
+                    <div style="width: 45px; height: 45px; background: rgba(255,255,255,0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
+                        <i class="fas fa-bookmark"></i>
+                    </div>
+                    <div class="text-start">
+                        <h4 class="mb-1" style="font-family: 'Playfair Display', serif; font-weight: 800; font-size: 22px; line-height: 1;">Borrow Confirmation</h4>
+                        <p class="mb-0" style="font-size: 14px; opacity: 0.9;">You're one step away from your next read.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 24px;">
+                <!-- Policy Box -->
+                <div style="background: #fafafa; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 24px; display: flex; gap: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);">
+                    <div style="color: #d48b71; font-size: 18px; margin-top:2px;">
+                        <i class="fas fa-info-circle"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 800; font-family: 'Playfair Display', serif; color: var(--bookhouse-text); font-size: 16px; margin-bottom: 4px;">Borrowing Policy</div>
+                        <div style="font-size: 13.5px; color: var(--bookhouse-text-muted); line-height: 1.5;">Return within 14 days. Late returns may incur a small fee.</div>
+                    </div>
+                </div>
+                
+                <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px;">Ready to proceed?</div>
+                
+                <form method="POST">
+                    <input type="hidden" name="action" value="borrow">
+                    <button type="submit" class="btn w-100" style="background: #d48b71; color: #fff; padding: 14px; border-radius: 999px; font-weight: 700; font-size: 15px; border: none; box-shadow: 0 4px 12px rgba(212,139,113,0.3); margin-bottom: 12px; transition: filter 0.2s;">
+                        <i class="fas fa-check me-2"></i> Confirm & Borrow
+                    </button>
+                    <button type="button" class="btn w-100" data-bs-dismiss="modal" style="background: transparent; border: none; color: var(--bookhouse-text-muted); font-size: 14px; padding: 10px; transition: color 0.2s;">
+                        Maybe later
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 // Share
