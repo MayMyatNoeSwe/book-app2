@@ -39,7 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
             if ($library->borrowBook($bookId, $userId)) {
                 $message = 'Book borrowed successfully! Due date: ' . date('M j, Y', strtotime('+14 days'));
                 $messageType = 'success';
-                // Refresh book data
                 $book = $library->getBookById($bookId);
             } else {
                 $message = 'Unable to borrow this book. Please try again.';
@@ -51,7 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
             if ($library->returnBook($bookId, $userId)) {
                 $message = 'Book returned successfully! Thank you.';
                 $messageType = 'success';
-                // Refresh book data
                 $book = $library->getBookById($bookId);
             } else {
                 $message = 'Unable to return this book. Please contact support.';
@@ -76,11 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
             
             if ($rating >= 1 && $rating <= 5) {
                 if ($reviewId > 0) {
-                    // Update existing review
                     $library->updateReview($reviewId, $userId, $rating, $reviewText);
                     $message = 'Review updated successfully!';
                 } else {
-                    // Add new review
                     $library->addReview($userId, $bookId, $rating, $reviewText);
                     $message = 'Review submitted successfully!';
                 }
@@ -96,13 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
 // Get book reviews
 $reviews = $library->getReviews($bookId);
 
-// Get related books (same author or category)
+// Get related books
 $relatedBooks = [];
 try {
     $relatedByAuthor = $library->getBooksPaginated(6, 0, null, $book->getAuthor());
     $relatedByCategory = $library->getBooksPaginated(6, 0, $book->getCategory(), null);
-    
-    // Combine and filter out current book
     $allRelated = array_merge($relatedByAuthor, $relatedByCategory);
     foreach ($allRelated as $relatedBook) {
         if ($relatedBook->getId() !== $bookId && count($relatedBooks) < 4) {
@@ -111,11 +105,10 @@ try {
     }
     $relatedBooks = array_values($relatedBooks);
 } catch (Exception $e) {
-    // Fallback to empty array if query fails
     $relatedBooks = [];
 }
 
-// Check if user is currently borrowing this book
+// Check if user is currently borrowing
 $isCurrentlyBorrowing = false;
 if (Auth::check()) {
     $isCurrentlyBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $bookId);
@@ -129,454 +122,555 @@ if ($totalRatings > 0) {
     $averageRating = $totalScore / $totalRatings;
 }
 
-// Set dynamic page title
 $pageTitle = $book->getTitle() . " - Book Details";
+$isEbook = $book instanceof EBook;
+$coverUrl = getBookCoverUrl($book, $book->getTitle(), $book->getAuthor());
+$fallbackCover = getDummyBookCover($book->getTitle(), $book->getAuthor());
 
 include 'views/header.php';
 ?>
 
-<div class="book-details-container">
-    <!-- Breadcrumb -->
-    <div class="container-fluid">
-        <nav aria-label="breadcrumb" class="pt-3">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item">
-                    <a href="index.php" class="text-decoration-none">
-                        <i class="fas fa-home me-1"></i>Home
-                    </a>
-                </li>
-                <li class="breadcrumb-item">
-                    <a href="book-list.php" class="text-decoration-none">Books</a>
-                </li>
-                <li class="breadcrumb-item">
-                    <a href="book-list.php?category=<?= urlencode($book->getCategory()) ?>" class="text-decoration-none">
-                        <?= e($book->getCategory()) ?>
-                    </a>
-                </li>
-                <li class="breadcrumb-item active" aria-current="page">
-                    <?= e($book->getTitle()) ?>
-                </li>
+<style>
+/* ─── Book Details Premium ─── */
+.bd-hero {
+    position: relative; overflow: hidden;
+    padding: 50px 0 60px;
+    background:
+        radial-gradient(ellipse at 10% 60%, rgba(224,122,95,0.12) 0%, transparent 55%),
+        radial-gradient(ellipse at 90% 20%, rgba(129,178,154,0.09) 0%, transparent 50%),
+        var(--bookhouse-bg, #FFF3F0);
+}
+[data-bs-theme="dark"] .bd-hero {
+    background:
+        radial-gradient(ellipse at 10% 60%, rgba(224,122,95,0.15) 0%, transparent 55%),
+        radial-gradient(ellipse at 90% 20%, rgba(129,178,154,0.12) 0%, transparent 50%),
+        #0f172a;
+}
+.bd-hero::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+        linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 60px 60px; pointer-events: none;
+}
+[data-bs-theme="dark"] .bd-hero::before {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+}
+
+/* Cover */
+.bd-cover-wrap {
+    position: relative; width: 280px; max-width: 100%; flex-shrink: 0;
+}
+.bd-cover {
+    width: 100%; border-radius: 20px; overflow: hidden;
+    box-shadow: 0 30px 60px rgba(61,64,91,0.2);
+    aspect-ratio: 2/3;
+}
+.bd-cover img { width: 100%; height: 100%; object-fit: cover; }
+.bd-cover-badge {
+    position: absolute; top: 14px; left: 14px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+    text-transform: uppercase; backdrop-filter: blur(8px);
+}
+.bd-cover-badge.available { background: rgba(16,185,129,0.9); color: #fff; }
+.bd-cover-badge.borrowed  { background: rgba(239,68,68,0.85); color: #fff; }
+.bd-cover-badge.ebook     { background: rgba(59,130,246,0.85); color: #fff; }
+
+/* Info */
+.bd-cat {
+    display: inline-block; font-size: 11px; font-weight: 800;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--bookhouse-orange); margin-bottom: 10px;
+    background: rgba(224,122,95,0.08);
+    padding: 5px 14px; border-radius: 999px;
+}
+.bd-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(1.6rem, 4vw, 2.6rem);
+    font-weight: 800; line-height: 1.2;
+    color: var(--bookhouse-text); margin-bottom: 10px;
+}
+.bd-author-line {
+    font-size: 1rem; color: var(--bookhouse-text-muted); margin-bottom: 20px;
+}
+.bd-author-line a {
+    color: var(--bookhouse-orange); text-decoration: none; font-weight: 700;
+    transition: opacity 0.2s;
+}
+.bd-author-line a:hover { opacity: 0.8; }
+
+/* Rating */
+.bd-rating {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+}
+.bd-rating .stars { display: flex; gap: 3px; }
+.bd-rating .stars i { color: #f59e0b; font-size: 16px; }
+.bd-rating .stars i.empty { color: #d1d5db; }
+.bd-rating .score { font-weight: 800; font-size: 18px; color: var(--bookhouse-text); }
+.bd-rating .count { font-size: 13px; color: var(--bookhouse-text-muted); }
+
+/* Meta grid */
+.bd-meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px; margin-bottom: 28px;
+}
+.bd-meta-item {
+    background: rgba(255,255,255,0.7); backdrop-filter: blur(8px);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 14px; padding: 14px 16px;
+    transition: transform 0.2s;
+    overflow: hidden; min-width: 0;
+}
+.bd-meta-item:hover { transform: translateY(-2px); }
+[data-bs-theme="dark"] .bd-meta-item {
+    background: rgba(30,41,59,0.7); border-color: rgba(255,255,255,0.08);
+}
+.bd-meta-item .label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: var(--bookhouse-text-muted); margin-bottom: 4px;
+}
+.bd-meta-item .value {
+    font-size: 15px; font-weight: 800; color: var(--bookhouse-text);
+    word-break: break-all; overflow-wrap: break-word;
+}
+
+/* Actions */
+.bd-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.bd-btn {
+    padding: 12px 28px; border-radius: 14px;
+    font-size: 14px; font-weight: 700;
+    border: none; cursor: pointer;
+    transition: all 0.25s; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+}
+.bd-btn-primary {
+    background: var(--bookhouse-orange); color: #fff;
+    box-shadow: 0 8px 20px rgba(224,122,95,0.3);
+}
+.bd-btn-primary:hover { filter: brightness(1.1); transform: translateY(-2px); color: #fff; }
+.bd-btn-outline {
+    background: transparent;
+    border: 2px solid rgba(0,0,0,0.1) !important;
+    color: var(--bookhouse-text);
+}
+[data-bs-theme="dark"] .bd-btn-outline { border-color: rgba(255,255,255,0.12) !important; }
+.bd-btn-outline:hover {
+    border-color: var(--bookhouse-orange) !important;
+    color: var(--bookhouse-orange);
+}
+.bd-btn-success { background: #10b981; color: #fff; }
+.bd-btn-danger-outline {
+    background: transparent; border: 2px solid rgba(239,68,68,0.3) !important;
+    color: #ef4444;
+}
+.bd-btn-danger-outline:hover { background: #ef4444; color: #fff; }
+
+/* Share */
+.bd-share { display: flex; gap: 8px; margin-top: 20px; }
+.bd-share button {
+    width: 40px; height: 40px; border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08); background: rgba(0,0,0,0.02);
+    color: var(--bookhouse-text-muted); cursor: pointer;
+    transition: all 0.2s; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+}
+[data-bs-theme="dark"] .bd-share button {
+    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);
+}
+.bd-share button:hover {
+    background: var(--bookhouse-orange); color: #fff;
+    border-color: var(--bookhouse-orange);
+}
+
+/* ─── Description ─── */
+.bd-section {
+    padding: 50px 0;
+}
+.bd-section-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 22px; font-weight: 800;
+    color: var(--bookhouse-text); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+}
+.bd-section-title i { color: var(--bookhouse-orange); }
+.bd-desc-text {
+    font-size: 15px; line-height: 1.8;
+    color: var(--bookhouse-text-muted);
+    max-width: 700px;
+}
+.bd-tag {
+    display: inline-block; padding: 5px 14px;
+    border-radius: 999px; font-size: 12px; font-weight: 700;
+    background: rgba(0,0,0,0.04); color: var(--bookhouse-text-muted);
+    margin: 4px 4px 4px 0;
+}
+[data-bs-theme="dark"] .bd-tag { background: rgba(255,255,255,0.06); }
+
+/* ─── Reviews ─── */
+.bd-review-card {
+    background: #fff; border-radius: 18px;
+    border: 1px solid rgba(0,0,0,0.06);
+    padding: 24px; margin-bottom: 16px;
+    transition: transform 0.2s;
+}
+.bd-review-card:hover { transform: translateY(-2px); }
+[data-bs-theme="dark"] .bd-review-card {
+    background: #1e293b; border-color: rgba(255,255,255,0.06);
+}
+.bd-reviewer {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+}
+.bd-reviewer-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(224,122,95,0.1);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--bookhouse-orange); font-size: 18px;
+}
+.bd-reviewer-name { font-weight: 700; font-size: 15px; color: var(--bookhouse-text); }
+.bd-reviewer-date { font-size: 12px; color: var(--bookhouse-text-muted); }
+.bd-review-stars { display: flex; gap: 2px; margin-bottom: 8px; }
+.bd-review-stars i { font-size: 13px; color: #f59e0b; }
+.bd-review-stars i.empty { color: #d1d5db; }
+.bd-review-text { font-size: 14px; line-height: 1.7; color: var(--bookhouse-text-muted); }
+.bd-review-actions {
+    display: flex; gap: 6px; margin-left: auto;
+}
+.bd-review-actions button {
+    width: 32px; height: 32px; border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.08); background: transparent;
+    cursor: pointer; font-size: 12px; color: var(--bookhouse-text-muted);
+    transition: all 0.2s;
+}
+.bd-review-actions button:hover { color: var(--bookhouse-orange); border-color: var(--bookhouse-orange); }
+
+/* ─── Related Books ─── */
+.bd-related-card {
+    display: flex; gap: 14px; align-items: center;
+    padding: 12px; border-radius: 14px;
+    border: 1px solid rgba(0,0,0,0.06);
+    background: #fff; text-decoration: none;
+    transition: all 0.2s; margin-bottom: 10px;
+}
+.bd-related-card:hover { transform: translateX(4px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+[data-bs-theme="dark"] .bd-related-card { background: #1e293b; border-color: rgba(255,255,255,0.06); }
+.bd-related-cover {
+    width: 60px; min-width: 60px; height: 80px;
+    border-radius: 10px; overflow: hidden; flex-shrink: 0;
+}
+.bd-related-cover img { width: 100%; height: 100%; object-fit: cover; }
+.bd-related-info h6 {
+    font-weight: 700; font-size: 13px; margin: 0 0 2px;
+    color: var(--bookhouse-text);
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+}
+.bd-related-info small { color: var(--bookhouse-text-muted); font-size: 12px; }
+
+/* ─── Empty reviews ─── */
+.bd-empty-reviews {
+    text-align: center; padding: 60px 20px;
+    background: rgba(0,0,0,0.02); border-radius: 20px;
+}
+[data-bs-theme="dark"] .bd-empty-reviews { background: rgba(255,255,255,0.02); }
+.bd-empty-reviews i { font-size: 48px; color: var(--bookhouse-orange); opacity: 0.3; margin-bottom: 16px; }
+
+/* ─── Modal ─── */
+.bd-modal .modal-content { border: none; border-radius: 24px; overflow: hidden; }
+.bd-modal .modal-header {
+    background: linear-gradient(135deg, var(--bookhouse-orange), #c2664e);
+    border: none; padding: 24px 28px; color: #fff;
+}
+.bd-modal .modal-body { padding: 28px; }
+.bd-modal .modal-footer { border: none; padding: 0 28px 28px; }
+
+/* Star input */
+.bd-star-input { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; }
+.bd-star-input input { display: none; }
+.bd-star-input label {
+    font-size: 28px; color: #d1d5db; cursor: pointer;
+    transition: color 0.15s;
+}
+.bd-star-input label:hover, .bd-star-input label:hover ~ label,
+.bd-star-input input:checked ~ label { color: #f59e0b; }
+
+/* Alert */
+.bd-alert {
+    border: none; border-radius: 14px; padding: 16px 20px;
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 600; font-size: 14px;
+}
+.bd-alert-success { background: rgba(16,185,129,0.1); color: #059669; }
+.bd-alert-error   { background: rgba(239,68,68,0.1); color: #dc2626; }
+
+/* ─── Responsive ─── */
+@media (max-width: 991px) {
+    .bd-hero-row { flex-direction: column !important; align-items: center !important; text-align: center; }
+    .bd-cover-wrap { width: 220px; margin-bottom: 30px; }
+    .bd-meta-grid { grid-template-columns: repeat(2, 1fr); }
+    .bd-actions { justify-content: center; }
+    .bd-share { justify-content: center; }
+    .bd-author-line { justify-content: center; }
+}
+@media (max-width: 576px) {
+    .bd-meta-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<!-- ═══════  HERO  ═══════ -->
+<section class="bd-hero">
+    <div class="container position-relative" style="z-index:2;">
+        <!-- Breadcrumb -->
+        <nav aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb" style="font-size:13px;">
+                <li class="breadcrumb-item"><a href="index.php" class="text-decoration-none" style="color:var(--bookhouse-text-muted);">Home</a></li>
+                <li class="breadcrumb-item"><a href="book-list.php" class="text-decoration-none" style="color:var(--bookhouse-text-muted);">Library</a></li>
+                <li class="breadcrumb-item"><a href="book-list.php?category=<?= urlencode($book->getCategory()) ?>" class="text-decoration-none" style="color:var(--bookhouse-text-muted);"><?= e($book->getCategory()) ?></a></li>
+                <li class="breadcrumb-item active fw-bold" style="color:var(--bookhouse-orange);"><?= e(strlen($book->getTitle()) > 30 ? substr($book->getTitle(), 0, 30) . '...' : $book->getTitle()) ?></li>
             </ol>
         </nav>
-    </div>
 
-    <!-- Message Display -->
-    <?php if ($message): ?>
-    <div class="container-fluid">
-        <div class="alert alert-<?= $messageType === 'success' ? 'success' : 'danger' ?> alert-dismissible fade show" role="alert">
-            <i class="fas fa-<?= $messageType === 'success' ? 'check-circle' : 'exclamation-triangle' ?> me-2"></i>
+        <!-- Alert -->
+        <?php if ($message): ?>
+        <div class="bd-alert <?= $messageType === 'success' ? 'bd-alert-success' : 'bd-alert-error' ?> mb-4">
+            <i class="fas fa-<?= $messageType === 'success' ? 'check-circle' : 'exclamation-triangle' ?>"></i>
             <?= e($message) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
-    </div>
-    <?php endif; ?>
+        <?php endif; ?>
 
-    <!-- Main Book Details -->
-    <div class="book-hero-section">
-        <div class="container-fluid">
-            <div class="row g-5 align-items-start">
-                <!-- Book Cover & Information (LEFT SIDE - 67%) -->
-                <div class="col-lg-8 order-lg-1">
-                    <!-- Book Cover -->
-                    <div class="book-cover-section animate-on-scroll mb-4">
-                        <div class="book-cover-wrapper">
-                            <img src="<?= getBookCoverUrl($book, $book->getTitle(), $book->getAuthor()) ?>"
-                                 alt="<?= e($book->getTitle()) ?> cover" 
-                                 class="book-cover-large"
-                                 onerror="this.src='<?= getDummyBookCover($book->getTitle(), $book->getAuthor()) ?>'">
-                            
-                            <!-- Availability Badge -->
-                            <div class="availability-badge">
-                                <?php if ($book instanceof EBook): ?>
-                                    <span class="badge bg-primary">
-                                        <i class="fas fa-download me-1"></i>Digital E-Book
-                                    </span>
-                                <?php elseif ($book->isAvailable()): ?>
-                                    <span class="badge bg-success">
-                                        <i class="fas fa-check-circle me-1"></i>Available
-                                    </span>
-                                <?php else: ?>
-                                    <span class="badge bg-danger">
-                                        <i class="fas fa-times-circle me-1"></i>Not Available
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+        <!-- Main Layout -->
+        <div class="d-flex gap-5 bd-hero-row">
+            <!-- Cover -->
+            <div class="bd-cover-wrap">
+                <div class="bd-cover">
+                    <img src="<?= $coverUrl ?>" alt="<?= e($book->getTitle()) ?>" onerror="this.src='<?= $fallbackCover ?>'">
+                </div>
+                <?php if ($isEbook): ?>
+                    <span class="bd-cover-badge ebook"><i class="fas fa-tablet-alt me-1"></i>E-Book</span>
+                <?php elseif ($book->isAvailable()): ?>
+                    <span class="bd-cover-badge available"><i class="fas fa-check me-1"></i>Available</span>
+                <?php else: ?>
+                    <span class="bd-cover-badge borrowed"><i class="fas fa-clock me-1"></i>Borrowed</span>
+                <?php endif; ?>
+            </div>
 
-                        <!-- Quick Action Buttons -->
-                        <div class="quick-actions mt-4">
-                            <?php if (Auth::check()): ?>
-                                <?php if ($book instanceof EBook): ?>
-                                    <?php if ($book->getDownloadLink()): ?>
-                                        <a href="<?= e($book->getDownloadLink()) ?>" target="_blank" 
-                                           class="btn btn-primary btn-lg w-100 mb-3">
-                                            <i class="fas fa-download me-2"></i>Download PDF
-                                        </a>
-                                    <?php else: ?>
-                                        <button class="btn btn-secondary btn-lg w-100 mb-3" disabled>
-                                            <i class="fas fa-times me-2"></i>No Download Link
-                                        </button>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <?php if ($isCurrentlyBorrowing): ?>
-                                        <button class="btn btn-success btn-lg w-100 mb-3" disabled>
-                                            <i class="fas fa-book-reader me-2"></i>Currently Borrowed
-                                        </button>
-                                        <form method="POST" class="mb-3">
-                                            <input type="hidden" name="action" value="return">
-                                            <button type="submit" class="btn btn-outline-danger btn-lg w-100">
-                                                <i class="fas fa-undo me-2"></i>Return Book
-                                            </button>
-                                        </form>
-                                    <?php elseif ($book->isAvailable()): ?>
-                                        <form method="POST" class="mb-3">
-                                            <input type="hidden" name="action" value="borrow">
-                                            <button type="submit" class="btn btn-primary btn-lg w-100">
-                                                <i class="fas fa-book me-2"></i>Borrow Now
-                                            </button>
-                                        </form>
-                                        <!-- Add to Cart Button -->
-                                        <button onclick="addToCart(<?= $bookId ?>)" class="btn btn-outline-primary btn-lg w-100 mb-3">
-                                            <i class="fas fa-shopping-cart me-2"></i>Add to Cart
-                                        </button>
-                                    <?php else: ?>
-                                        <form method="POST" class="mb-3">
-                                            <input type="hidden" name="action" value="reserve">
-                                            <button type="submit" class="btn btn-outline-info btn-lg w-100">
-                                                <i class="fas fa-bookmark me-2"></i>Reserve Book
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-                                <?php endif; ?>
+            <!-- Info -->
+            <div class="flex-1" style="min-width:0;">
+                <span class="bd-cat"><?= e($book->getCategory()) ?></span>
+                <h1 class="bd-title"><?= e($book->getTitle()) ?></h1>
+                <div class="bd-author-line">
+                    by <a href="author-details.php?author=<?= urlencode($book->getAuthor()) ?>"><?= e($book->getAuthor()) ?></a>
+                    <span style="margin: 0 8px; opacity:0.3;">·</span> <?= $book->getYear() ?>
+                </div>
+
+                <!-- Rating -->
+                <div class="bd-rating">
+                    <div class="stars">
+                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                            <i class="fas fa-star <?= $i <= round($averageRating) ? '' : 'empty' ?>"></i>
+                        <?php endfor; ?>
+                    </div>
+                    <span class="score"><?= number_format($averageRating, 1) ?></span>
+                    <span class="count">(<?= $totalRatings ?> <?= $totalRatings === 1 ? 'review' : 'reviews' ?>)</span>
+                </div>
+
+                <!-- Meta Grid -->
+                <div class="bd-meta-grid">
+                    <div class="bd-meta-item">
+                        <div class="label">Category</div>
+                        <div class="value"><?= e($book->getCategory()) ?></div>
+                    </div>
+                    <div class="bd-meta-item">
+                        <div class="label">Published</div>
+                        <div class="value"><?= $book->getYear() ?></div>
+                    </div>
+                    <?php if (!$isEbook): ?>
+                    <div class="bd-meta-item">
+                        <div class="label">Copies</div>
+                        <div class="value"><?= $book->getAvailableCopies() ?> / <?= $book->getTotalCopies() ?></div>
+                    </div>
+                    <?php else: ?>
+                    <div class="bd-meta-item">
+                        <div class="label">Format</div>
+                        <div class="value">Digital PDF</div>
+                    </div>
+                    <?php endif; ?>
+                    <div class="bd-meta-item">
+                        <div class="label">Book ID</div>
+                        <div class="value" style="font-family:monospace; font-size:13px;"><?= e($book->getId()) ?></div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="bd-actions">
+                    <?php if (Auth::check()): ?>
+                        <?php if ($isEbook): ?>
+                            <?php if ($book->getDownloadLink()): ?>
+                                <a href="<?= e($book->getDownloadLink()) ?>" target="_blank" class="bd-btn bd-btn-primary">
+                                    <i class="fas fa-download"></i> Download PDF
+                                </a>
                             <?php else: ?>
-                                <a href="login.php" class="btn btn-primary btn-lg w-100 mb-3">
-                                    <i class="fas fa-sign-in-alt me-2"></i>
-                                    <?= ($book instanceof EBook) ? 'Login to Download' : 'Login to Borrow' ?>
-                                </a>
+                                <button class="bd-btn bd-btn-outline" disabled><i class="fas fa-times"></i> No Download</button>
                             <?php endif; ?>
-
-                            <!-- Share Buttons -->
-                            <div class="share-buttons">
-                                <h6 class="text-muted mb-2">Share this book:</h6>
-                                <div class="btn-group w-100" role="group">
-                                    <button class="btn btn-outline-primary" onclick="shareBook('facebook')" title="Share on Facebook">
-                                        <i class="fab fa-facebook-f"></i>
-                                    </button>
-                                    <button class="btn btn-outline-info" onclick="shareBook('twitter')" title="Share on Twitter">
-                                        <i class="fab fa-twitter"></i>
-                                    </button>
-                                    <button class="btn btn-outline-success" onclick="shareBook('whatsapp')" title="Share on WhatsApp">
-                                        <i class="fab fa-whatsapp"></i>
-                                    </button>
-                                    <button class="btn btn-outline-secondary" onclick="copyBookLink()" title="Copy Link">
-                                        <i class="fas fa-link"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Book Information -->
-                    <div class="book-info-section animate-on-scroll">
-                        <!-- Title & Author -->
-                        <div class="book-header mb-4">
-                            <h1 class="book-title"><?= e($book->getTitle()) ?></h1>
-                            <div class="book-author">
-                                <span class="text-muted">by</span>
-                                <a href="author-details.php?author=<?= urlencode($book->getAuthor()) ?>" 
-                                   class="author-link">
-                                    <?= e($book->getAuthor()) ?>
-                                </a>
-                                <span class="text-muted">• <?= $book->getYear() ?></span>
-                            </div>
-                        </div>
-
-                        <!-- Rating & Reviews Summary -->
-                        <div class="rating-summary mb-4">
-                            <div class="row align-items-center">
-                                <div class="col-md-6">
-                                    <div class="rating-display">
-                                        <?php if ($totalRatings > 0): ?>
-                                            <div class="stars-large">
-                                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                                    <i class="fas fa-star <?= $i <= round($averageRating) ? 'text-warning' : 'text-muted' ?>"></i>
-                                                <?php endfor; ?>
-                                            </div>
-                                            <span class="rating-text">
-                                                <?= number_format($averageRating, 1) ?> out of 5 
-                                                (<?= $totalRatings ?> <?= $totalRatings === 1 ? 'review' : 'reviews' ?>)
-                                            </span>
-                                        <?php else: ?>
-                                            <div class="stars-large">
-                                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                                    <i class="fas fa-star text-muted"></i>
-                                                <?php endfor; ?>
-                                            </div>
-                                            <span class="rating-text text-muted">No reviews yet</span>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 text-md-end">
-                                    <?php if (Auth::check()): ?>
-                                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#reviewModal">
-                                            <i class="fas fa-star me-1"></i>Write a Review
-                                        </button>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Book Details Grid -->
-                        <div class="book-details-grid mb-4">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <div class="detail-card">
-                                        <div class="detail-icon">
-                                            <i class="fas fa-tag text-primary"></i>
-                                        </div>
-                                        <div class="detail-content">
-                                            <h6>Category</h6>
-                                            <a href="book-list.php?category=<?= urlencode($book->getCategory()) ?>" 
-                                               class="category-link">
-                                                <?= e($book->getCategory()) ?>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="detail-card">
-                                        <div class="detail-icon">
-                                            <i class="fas fa-calendar text-success"></i>
-                                        </div>
-                                        <div class="detail-content">
-                                            <h6>Publication Year</h6>
-                                            <p><?= $book->getYear() ?></p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <?php if (!($book instanceof EBook)): ?>
-                                <div class="col-md-6">
-                                    <div class="detail-card">
-                                        <div class="detail-icon">
-                                            <i class="fas fa-books text-info"></i>
-                                        </div>
-                                        <div class="detail-content">
-                                            <h6>Copies Available</h6>
-                                            <p><?= $book->getAvailableCopies() ?> of <?= $book->getTotalCopies() ?></p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php else: ?>
-                                <div class="col-md-6">
-                                    <div class="detail-card">
-                                        <div class="detail-icon">
-                                            <i class="fas fa-file-pdf text-danger"></i>
-                                        </div>
-                                        <div class="detail-content">
-                                            <h6>File Size</h6>
-                                            <p><?= e($book->getFileSize() ?? 'Unknown') ?></p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="col-md-6">
-                                    <div class="detail-card">
-                                        <div class="detail-icon">
-                                            <i class="fas fa-bookmark text-warning"></i>
-                                        </div>
-                                        <div class="detail-content">
-                                            <h6>Book ID</h6>
-                                            <p class="font-monospace"><?= e($book->getId()) ?></p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Book Description (Placeholder) -->
-                        <div class="book-description mb-4">
-                            <h5 class="section-title">
-                                <i class="fas fa-align-left me-2"></i>Description
-                            </h5>
-                            <div class="description-content">
-                                <p class="text-muted">
-                                    Discover the captivating world of "<?= e($book->getTitle()) ?>" by <?= e($book->getAuthor()) ?>. 
-                                    This remarkable <?= strtolower($book->getCategory()) ?> work, published in <?= $book->getYear() ?>, 
-                                    offers readers an engaging journey through expertly crafted storytelling and profound insights.
-                                </p>
-                                <p class="text-muted">
-                                    Whether you're a longtime fan of <?= e($book->getAuthor()) ?> or discovering their work for the first time, 
-                                    this book promises to deliver an unforgettable reading experience that will leave you thinking long after 
-                                    you've turned the final page.
-                                </p>
-                                <div class="description-tags">
-                                    <span class="badge bg-light text-dark me-2"><?= e($book->getCategory()) ?></span>
-                                    <span class="badge bg-light text-dark me-2"><?= $book->getYear() ?>s</span>
-                                    <span class="badge bg-light text-dark"><?= e($book->getAuthor()) ?></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Related Books Sidebar (RIGHT SIDE - 33%) -->
-                <div class="col-lg-4 order-lg-2">
-                    <?php if (!empty($relatedBooks)): ?>
-                    <div class="related-books-sidebar animate-on-scroll">
-                        <div class="section-header mb-4">
-                            <h4 class="section-title">
-                                <i class="fas fa-book-open me-2"></i>Related Books
-                            </h4>
-                        </div>
-                        
-                        <div class="related-books-list">
-                            <?php foreach ($relatedBooks as $relatedBook): ?>
-                                <div class="related-book-item mb-3">
-                                    <a href="book-details.php?id=<?= $relatedBook->getId() ?>" class="text-decoration-none">
-                                        <div class="card border-0 shadow-sm hover-shadow transition">
-                                            <div class="row g-0">
-                                                <div class="col-4">
-                                                    <img src="<?= getBookCoverUrl($relatedBook, $relatedBook->getTitle(), $relatedBook->getAuthor()) ?>" 
-                                                         class="img-fluid rounded-start" 
-                                                         alt="<?= e($relatedBook->getTitle()) ?>"
-                                                         style="height: 120px; object-fit: cover; width: 100%;"
-                                                         onerror="this.src='<?= getDummyBookCover($relatedBook->getTitle(), $relatedBook->getAuthor(), 200, 300) ?>'">
-                                                </div>
-                                                <div class="col-8">
-                                                    <div class="card-body p-2">
-                                                        <h6 class="card-title mb-1 small" style="font-size: 0.85rem;">
-                                                            <?= e(strlen($relatedBook->getTitle()) > 40 ? substr($relatedBook->getTitle(), 0, 40) . '...' : $relatedBook->getTitle()) ?>
-                                                        </h6>
-                                                        <p class="card-text text-muted mb-1" style="font-size: 0.75rem;">
-                                                            <?= e($relatedBook->getAuthor()) ?>
-                                                        </p>
-                                                        <p class="card-text mb-0" style="font-size: 0.7rem;">
-                                                            <span class="badge bg-primary"><?= e($relatedBook->getCategory()) ?></span>
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reviews Section -->
-    <div class="reviews-section">
-        <div class="container-fluid">
-            <div class="section-header">
-                <h3 class="section-title">
-                    <i class="fas fa-comments me-2"></i>
-                    Reader Reviews
-                    <?php if ($totalRatings > 0): ?>
-                        <span class="badge bg-primary ms-2"><?= $totalRatings ?></span>
-                    <?php endif; ?>
-                </h3>
-            </div>
-
-            <?php if (!empty($reviews)): ?>
-                <div class="reviews-grid">
-                    <?php foreach ($reviews as $review): ?>
-                    <div class="review-card animate-on-scroll" id="review-<?= $review['id'] ?>">
-                        <div class="review-header">
-                            <div class="reviewer-info">
-                                <div class="reviewer-avatar">
-                                    <i class="fas fa-user-circle"></i>
-                                </div>
-                                <div class="reviewer-details">
-                                    <h6 class="reviewer-name"><?= e($review['username']) ?></h6>
-                                    <div class="review-stars">
-                                        <?php for ($i = 1; $i <= 5; $i++): ?>
-                                            <i class="fas fa-star <?= $i <= $review['rating'] ? 'text-warning' : 'text-muted' ?>"></i>
-                                        <?php endfor; ?>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="review-actions">
-                                <small class="text-muted me-3">
-                                    <?= date('M j, Y', strtotime($review['created_at'])) ?>
-                                </small>
-                                <?php if (Auth::check() && Auth::id() == $review['user_id']): ?>
-                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editReview(<?= $review['id'] ?>, <?= $review['rating'] ?>, '<?= addslashes($review['review_text']) ?>')">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteReview(<?= $review['id'] ?>)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <?php if (!empty($review['review_text'])): ?>
-                        <div class="review-content">
-                            <p><?= e($review['review_text']) ?></p>
-                        </div>
+                        <?php else: ?>
+                            <?php if ($isCurrentlyBorrowing): ?>
+                                <button class="bd-btn bd-btn-success" disabled><i class="fas fa-book-reader"></i> Currently Reading</button>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="action" value="return">
+                                    <button type="submit" class="bd-btn bd-btn-danger-outline"><i class="fas fa-undo"></i> Return</button>
+                                </form>
+                            <?php elseif ($book->isAvailable()): ?>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="action" value="borrow">
+                                    <button type="submit" class="bd-btn bd-btn-primary"><i class="fas fa-book"></i> Borrow Now</button>
+                                </form>
+                                <button onclick="addToCart(<?= $bookId ?>)" class="bd-btn bd-btn-outline"><i class="fas fa-shopping-cart"></i> Add to Cart</button>
+                            <?php else: ?>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="action" value="reserve">
+                                    <button type="submit" class="bd-btn bd-btn-outline"><i class="fas fa-bookmark"></i> Reserve</button>
+                                </form>
+                            <?php endif; ?>
                         <?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <div class="empty-reviews">
-                    <div class="text-center py-5">
-                        <i class="fas fa-comments fa-3x text-muted mb-3"></i>
-                        <h5 class="text-muted">No reviews yet</h5>
-                        <p class="text-muted">Be the first to share your thoughts about this book!</p>
                         <?php if (Auth::check()): ?>
-                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#reviewModal">
-                                <i class="fas fa-star me-1"></i>Write the First Review
+                            <button class="bd-btn bd-btn-outline" data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                <i class="fas fa-star"></i> Review
                             </button>
                         <?php endif; ?>
-                    </div>
+                    <?php else: ?>
+                        <a href="login.php" class="bd-btn bd-btn-primary">
+                            <i class="fas fa-sign-in-alt"></i> <?= $isEbook ? 'Login to Download' : 'Login to Borrow' ?>
+                        </a>
+                    <?php endif; ?>
                 </div>
-            <?php endif; ?>
-        </div>
-    </div>
 
-    <!-- Related Books Section -->
-    <?php if (!empty($relatedBooks)): ?>
-    <div class="related-books-section">
-        <div class="container-fluid">
-            <div class="section-header">
-                <h3 class="section-title">
-                    <i class="fas fa-book-open me-2"></i>You Might Also Like
-                </h3>
-            </div>
-            
-            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
-                <?php foreach ($relatedBooks as $relatedBook): ?>
-                    <?php 
-                    $showBorrow = Auth::check();
-                    $book = $relatedBook; // For compatibility with book-card.php
-                    include 'views/book-card.php'; 
-                    ?>
-                <?php endforeach; ?>
+                <!-- Share -->
+                <div class="bd-share">
+                    <button onclick="shareBook('facebook')" title="Facebook"><i class="fab fa-facebook-f"></i></button>
+                    <button onclick="shareBook('twitter')" title="Twitter"><i class="fab fa-twitter"></i></button>
+                    <button onclick="shareBook('whatsapp')" title="WhatsApp"><i class="fab fa-whatsapp"></i></button>
+                    <button onclick="copyBookLink()" title="Copy Link"><i class="fas fa-link"></i></button>
+                </div>
             </div>
         </div>
     </div>
-    <?php endif; ?>
+</section>
+
+<!-- ═══════  DESCRIPTION & SIDEBAR  ═══════ -->
+<div class="bd-section" style="border-top: 1px solid rgba(0,0,0,0.04);">
+    <div class="container">
+        <div class="row g-5">
+            <!-- Description -->
+            <div class="col-lg-8">
+                <h3 class="bd-section-title"><i class="fas fa-align-left"></i> About This Book</h3>
+                <div class="bd-desc-text">
+                    <p>Discover the captivating world of "<?= e($book->getTitle()) ?>" by <?= e($book->getAuthor()) ?>. 
+                    This remarkable <?= strtolower($book->getCategory()) ?> work, published in <?= $book->getYear() ?>, 
+                    offers readers an engaging journey through expertly crafted storytelling and profound insights.</p>
+                    <p>Whether you're a longtime fan of <?= e($book->getAuthor()) ?> or discovering their work for the first time, 
+                    this book promises to deliver an unforgettable reading experience that will leave you thinking long after 
+                    you've turned the final page.</p>
+                </div>
+                <div class="mt-3">
+                    <span class="bd-tag"><?= e($book->getCategory()) ?></span>
+                    <span class="bd-tag"><?= $book->getYear() ?>s</span>
+                    <span class="bd-tag"><?= e($book->getAuthor()) ?></span>
+                </div>
+
+                <!-- Reviews -->
+                <div class="mt-5 pt-4" style="border-top: 1px solid rgba(0,0,0,0.04);">
+                    <h3 class="bd-section-title">
+                        <i class="fas fa-comments"></i> Reader Reviews
+                        <?php if ($totalRatings > 0): ?>
+                            <span style="background:rgba(224,122,95,0.1);color:var(--bookhouse-orange);padding:2px 10px;border-radius:999px;font-size:13px;margin-left:4px;"><?= $totalRatings ?></span>
+                        <?php endif; ?>
+                    </h3>
+
+                    <?php if (!empty($reviews)): ?>
+                        <?php foreach ($reviews as $review): ?>
+                        <div class="bd-review-card" id="review-<?= $review['id'] ?>">
+                            <div class="d-flex align-items-start">
+                                <div class="bd-reviewer">
+                                    <div class="bd-reviewer-avatar"><i class="fas fa-user"></i></div>
+                                    <div>
+                                        <div class="bd-reviewer-name"><?= e($review['username']) ?></div>
+                                        <div class="bd-reviewer-date"><?= date('M j, Y', strtotime($review['created_at'])) ?></div>
+                                    </div>
+                                </div>
+                                <?php if (Auth::check() && Auth::id() == $review['user_id']): ?>
+                                <div class="bd-review-actions">
+                                    <button onclick="editReview(<?= $review['id'] ?>, <?= $review['rating'] ?>, '<?= addslashes($review['review_text']) ?>')" title="Edit"><i class="fas fa-pen"></i></button>
+                                    <button onclick="deleteReview(<?= $review['id'] ?>)" title="Delete"><i class="fas fa-trash"></i></button>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="bd-review-stars">
+                                <?php for ($i = 1; $i <= 5; $i++): ?>
+                                    <i class="fas fa-star <?= $i <= $review['rating'] ? '' : 'empty' ?>"></i>
+                                <?php endfor; ?>
+                            </div>
+                            <?php if (!empty($review['review_text'])): ?>
+                                <div class="bd-review-text"><?= e($review['review_text']) ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="bd-empty-reviews">
+                            <div style="width:72px;height:72px;margin:0 auto 20px;background:rgba(224,122,95,0.08);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                                <i class="fas fa-comments" style="font-size:28px;color:var(--bookhouse-orange);opacity:0.5;"></i>
+                            </div>
+                            <h5 style="font-weight:700; color:var(--bookhouse-text); margin-bottom:8px; font-size:18px;">No reviews yet</h5>
+                            <p style="color:var(--bookhouse-text-muted); margin-bottom:24px; font-size:14px;">Be the first to share your thoughts about this book!</p>
+                            <?php if (Auth::check()): ?>
+                                <button class="bd-btn bd-btn-outline" data-bs-toggle="modal" data-bs-target="#reviewModal" style="padding:10px 24px; font-size:13px; margin:0 auto; justify-content:center;">
+                                    Write a Review
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Sidebar: Related Books -->
+            <div class="col-lg-4">
+                <?php if (!empty($relatedBooks)): ?>
+                <h3 class="bd-section-title"><i class="fas fa-book-open"></i> Related Books</h3>
+                <?php foreach ($relatedBooks as $rb):
+                    $rbCover = getBookCoverUrl($rb, $rb->getTitle(), $rb->getAuthor());
+                    $rbFallback = getDummyBookCover($rb->getTitle(), $rb->getAuthor(), 200, 300);
+                ?>
+                <a href="book-details.php?id=<?= $rb->getId() ?>" class="bd-related-card">
+                    <div class="bd-related-cover">
+                        <img src="<?= $rbCover ?>" alt="<?= e($rb->getTitle()) ?>" loading="lazy" onerror="this.src='<?= $rbFallback ?>'">
+                    </div>
+                    <div class="bd-related-info">
+                        <h6><?= e($rb->getTitle()) ?></h6>
+                        <small><?= e($rb->getAuthor()) ?> · <?= e($rb->getCategory()) ?></small>
+                    </div>
+                </a>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
 </div>
 
 <?php $book = $currentBook; ?>
 
 <!-- Review Modal -->
 <?php if (Auth::check()): ?>
-<div class="modal fade" id="reviewModal" tabindex="-1">
+<div class="modal fade bd-modal" id="reviewModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-star me-2"></i>Write a Review
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div>
+                    <h5 class="modal-title fw-800 mb-0"><i class="fas fa-star me-2"></i>Write a Review</h5>
+                    <p class="mb-0 small opacity-75">Share your thoughts about "<?= e($book->getTitle()) ?>"</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" id="reviewForm">
                 <div class="modal-body">
@@ -584,28 +678,25 @@ include 'views/header.php';
                     <input type="hidden" name="review_id" id="reviewId" value="">
                     
                     <div class="mb-4">
-                        <h6 class="mb-2">Rating *</h6>
-                        <div class="rating-input">
-                            <?php for ($i = 1; $i <= 5; $i++): ?>
-                                <input type="radio" name="rating" value="<?= $i ?>" id="star<?= $i ?>" required>
-                                <label for="star<?= $i ?>" class="star-label">
-                                    <i class="fas fa-star"></i>
-                                </label>
+                        <label class="form-label fw-700 mb-2">Your Rating *</label>
+                        <div class="bd-star-input">
+                            <?php for ($i = 5; $i >= 1; $i--): ?>
+                                <input type="radio" name="rating" value="<?= $i ?>" id="bdStar<?= $i ?>" required>
+                                <label for="bdStar<?= $i ?>" title="<?= $i ?> stars"><i class="fas fa-star"></i></label>
                             <?php endfor; ?>
                         </div>
-                        <small class="text-muted">Click on a star to rate this book</small>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="reviewText" class="form-label">Your Review (Optional)</label>
+                        <label for="reviewText" class="form-label fw-700">Your Review <span class="fw-normal text-muted">(Optional)</span></label>
                         <textarea class="form-control" id="reviewText" name="review_text" rows="4" 
-                                  placeholder="Share your thoughts about this book..."></textarea>
+                                  placeholder="What did you think of this book?" style="border-radius:14px; border-color: rgba(0,0,0,0.1);"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-paper-plane me-1"></i>Submit Review
+                    <button type="button" class="bd-btn bd-btn-outline" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="bd-btn bd-btn-primary">
+                        <i class="fas fa-paper-plane"></i> Submit Review
                     </button>
                 </div>
             </form>
@@ -615,184 +706,79 @@ include 'views/header.php';
 <?php endif; ?>
 
 <script>
-// Share functionality
+// Share
 function shareBook(platform) {
     const url = encodeURIComponent(window.location.href);
     const title = encodeURIComponent('<?= addslashes($book->getTitle()) ?> by <?= addslashes($book->getAuthor()) ?>');
-    
     let shareUrl = '';
     switch(platform) {
-        case 'facebook':
-            shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
-            break;
-        case 'twitter':
-            shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${title}`;
-            break;
-        case 'whatsapp':
-            shareUrl = `https://wa.me/?text=${title} ${url}`;
-            break;
+        case 'facebook': shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`; break;
+        case 'twitter': shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${title}`; break;
+        case 'whatsapp': shareUrl = `https://wa.me/?text=${title} ${url}`; break;
     }
-    
-    if (shareUrl) {
-        window.open(shareUrl, '_blank', 'width=600,height=400');
-    }
+    if (shareUrl) window.open(shareUrl, '_blank', 'width=600,height=400');
 }
 
 function copyBookLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
-        // Show success feedback
         const btn = event.target.closest('button');
-        const originalHTML = btn.innerHTML;
+        const orig = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-check"></i>';
-        btn.classList.add('btn-success');
-        btn.classList.remove('btn-outline-secondary');
-        
-        setTimeout(() => {
-            btn.innerHTML = originalHTML;
-            btn.classList.remove('btn-success');
-            btn.classList.add('btn-outline-secondary');
-        }, 2000);
+        btn.style.background = '#10b981'; btn.style.color = '#fff'; btn.style.borderColor = '#10b981';
+        setTimeout(() => { btn.innerHTML = orig; btn.style = ''; }, 2000);
     });
 }
 
-// Edit review function
+// Reviews
 function editReview(reviewId, rating, reviewText) {
-    // Set the review ID in a hidden field
     document.getElementById('reviewId').value = reviewId;
-    
-    // Set the rating
-    const ratingInput = document.querySelector(`input[name="rating"][value="${rating}"]`);
-    if (ratingInput) {
-        ratingInput.checked = true;
-        // Update star labels
-        const starLabels = document.querySelectorAll('.rating-input .star-label');
-        starLabels.forEach((l, i) => {
-            l.classList.toggle('selected', i < rating);
-        });
-    }
-    
-    // Set the review text
+    const radio = document.querySelector(`input[name="rating"][value="${rating}"]`);
+    if (radio) radio.checked = true;
     document.getElementById('reviewText').value = reviewText;
-    
-    // Change modal title
-    document.querySelector('#reviewModal .modal-title').textContent = 'Edit Your Review';
-    
-    // Change submit button text
-    document.querySelector('#reviewModal button[type="submit"]').innerHTML = '<i class="fas fa-save me-1"></i>Update Review';
-    
-    // Show the modal
-    const modal = new bootstrap.Modal(document.getElementById('reviewModal'));
-    modal.show();
+    document.querySelector('#reviewModal .modal-title').innerHTML = '<i class="fas fa-pen me-2"></i>Edit Your Review';
+    document.querySelector('#reviewModal button[type="submit"]').innerHTML = '<i class="fas fa-save me-1"></i> Update Review';
+    new bootstrap.Modal(document.getElementById('reviewModal')).show();
 }
 
-// Delete review function
 function deleteReview(reviewId) {
-    console.log('deleteReview function called with reviewId:', reviewId);
-    console.log('Swal object:', typeof Swal);
-    
-    if (typeof Swal === 'undefined') {
-        alert('ERROR: SweetAlert2 is not loaded!');
-        return;
-    }
-    
+    if (typeof Swal === 'undefined') { alert('SweetAlert2 not loaded'); return; }
     Swal.fire({
         title: 'Delete Review?',
-        text: 'Are you sure you want to delete this review? This action cannot be undone.',
+        text: 'This action cannot be undone.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#d33',
         cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, delete it!',
-        cancelButtonText: 'Cancel'
+        confirmButtonText: 'Yes, delete it!'
     }).then((result) => {
-        console.log('Swal result:', result);
-        
         if (result.isConfirmed) {
-            console.log('User confirmed deletion, sending request...');
-            
-            // Send delete request
             fetch('api/delete_review.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ review_id: reviewId })
             })
-            .then(response => {
-                console.log('Response status:', response.status);
-                return response.json();
-            })
+            .then(r => r.json())
             .then(data => {
-                console.log('Response data:', data);
-                
                 if (data.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Deleted!',
-                        text: 'Your review has been deleted.',
-                        confirmButtonColor: '#2e8a40',
-                        timer: 1500,
-                        showConfirmButton: false
-                    }).then(() => {
-                        console.log('Reloading page...');
-                        location.reload();
-                    });
+                    Swal.fire({ icon:'success', title:'Deleted!', timer:1500, showConfirmButton:false }).then(() => location.reload());
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: data.message || 'Failed to delete review',
-                        confirmButtonColor: '#2e8a40'
-                    });
+                    Swal.fire({ icon:'error', title:'Error', text: data.message || 'Failed to delete' });
                 }
             })
-            .catch(error => {
-                console.error('Fetch error:', error);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: 'An error occurred while deleting the review',
-                    confirmButtonColor: '#2e8a40'
-                });
-            });
-        } else {
-            console.log('User cancelled deletion');
+            .catch(() => Swal.fire({ icon:'error', title:'Error', text:'Network error' }));
         }
     });
 }
 
-// Rating input functionality
 document.addEventListener('DOMContentLoaded', function() {
-    const ratingInputs = document.querySelectorAll('.rating-input input[type="radio"]');
-    const starLabels = document.querySelectorAll('.rating-input .star-label');
-    
-    starLabels.forEach((label, index) => {
-        label.addEventListener('mouseenter', () => {
-            starLabels.forEach((l, i) => {
-                l.classList.toggle('hover', i <= index);
-            });
-        });
-        
-        label.addEventListener('mouseleave', () => {
-            starLabels.forEach(l => l.classList.remove('hover'));
-        });
-        
-        label.addEventListener('click', () => {
-            starLabels.forEach((l, i) => {
-                l.classList.toggle('selected', i <= index);
-            });
-        });
-    });
-    
-    // Reset modal when closed (only if modal exists)
+    // Reset modal
     const reviewModal = document.getElementById('reviewModal');
     if (reviewModal) {
-        reviewModal.addEventListener('hidden.bs.modal', function () {
+        reviewModal.addEventListener('hidden.bs.modal', function() {
             document.getElementById('reviewId').value = '';
             document.getElementById('reviewForm').reset();
-            document.querySelector('#reviewModal .modal-title').textContent = 'Write a Review';
-            document.querySelector('#reviewModal button[type="submit"]').innerHTML = '<i class="fas fa-paper-plane me-1"></i>Submit Review';
-            starLabels.forEach(l => l.classList.remove('selected'));
+            document.querySelector('#reviewModal .modal-title').innerHTML = '<i class="fas fa-star me-2"></i>Write a Review';
+            document.querySelector('#reviewModal button[type="submit"]').innerHTML = '<i class="fas fa-paper-plane me-1"></i> Submit Review';
         });
     }
 });
