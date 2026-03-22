@@ -16,9 +16,11 @@ class EBook extends Book
         ?string $coverImage = null,
         string $category = 'Uncategorized',
         ?string $downloadLink = null,
-        ?string $id = null
+        ?string $id = null,
+        ?int $price = 15000,
+        ?int $borrowPrice = 5000
     ) {
-        parent::__construct($title, $author, $year, $totalCopies, $coverImage, $category, $id);
+        parent::__construct($title, $author, $year, $totalCopies, $coverImage, $category, $id, $price, $borrowPrice);
         $this->fileSize = $fileSize;
         $this->downloadLink = $downloadLink;
     }
@@ -50,10 +52,12 @@ class EBook extends Book
             $data['year'],
             $data['fileSize'] ?? "Unknown",
             $data['totalCopies'] ?? 1,
-            $data['coverImage'] ?? null,
+            $data['cover_image'] ?? null,
             $data['category'] ?? 'Uncategorized',
-            $data['downloadLink'] ?? null,
-            $data['id'] ?? null
+            $data['download_link'] ?? null,
+            $data['id'] ?? null,
+            $data['price'] ?? 15000,
+            $data['borrow_price'] ?? 5000
         );
         $ebook->availableCopies = $data['available_copies'] ?? $ebook->totalCopies;
         return $ebook;

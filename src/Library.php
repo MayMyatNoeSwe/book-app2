@@ -72,9 +72,9 @@ class Library
     public function addBook(Book $book): void
     {
         $sql = "INSERT INTO books(
-        id,title,author,year,cover_image,category,total_copies,available_copies,type,file_size,download_link
+        id,title,author,year,cover_image,category,total_copies,available_copies,type,file_size,download_link,price,borrow_price
         )VALUES(
-        :id,:title,:author,:year,:cover_image,:category,:total_copies,:available_copies,:type,:file_size,:download_link
+        :id,:title,:author,:year,:cover_image,:category,:total_copies,:available_copies,:type,:file_size,:download_link,:price,:borrow_price
         )";
         $stmt = $this->pdo->prepare($sql);
         $data = $book->toArray();
@@ -90,6 +90,8 @@ class Library
             ':type' => $data['type'] ?? 'physical',
             ':file_size' => $data['file_size'] ?? null,
             ':download_link' => $data['download_link'] ?? null,
+            ':price' => $data['price'] ?? 15000,
+            ':borrow_price' => $data['borrow_price'] ?? 5000,
         ]);
         // getId() => it is used from Book.php
         // Store in books array with ID as key
@@ -108,7 +110,9 @@ class Library
             available_copies = :available_copies,
             type = :type,
             file_size = :file_size,
-            download_link = :download_link
+            download_link = :download_link,
+            price = :price,
+            borrow_price = :borrow_price
             WHERE id = :id");
         $stmt->execute([
             ':id'               => $data['id'],
@@ -122,6 +126,8 @@ class Library
             ':type'             => $data['type'] ?? 'physical',
             ':file_size'        => $data['file_size'] ?? null,
             ':download_link'    => $data['download_link'] ?? null,
+            ':price'            => $data['price'] ?? 15000,
+            ':borrow_price'     => $data['borrow_price'] ?? 5000,
         ]);
         $this->books[$book->getId()] = $book;
     }

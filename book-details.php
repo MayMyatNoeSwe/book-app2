@@ -519,9 +519,15 @@ include 'views/header.php';
                     </div>
                     <?php endif; ?>
                     <div class="bd-meta-item">
-                        <div class="label">Price</div>
+                        <div class="label">Buy Price</div>
                         <div class="value"><?= number_format($book->getPrice()) ?> Ks</div>
                     </div>
+                    <?php if (!$isEbook): ?>
+                    <div class="bd-meta-item">
+                        <div class="label">Borrow Fee</div>
+                        <div class="value"><?= number_format($book->getBorrowPrice()) ?> Ks</div>
+                    </div>
+                    <?php endif; ?>
                     <div class="bd-meta-item">
                         <div class="label">Book ID</div>
                         <div class="value" style="font-family:monospace; font-size:13px;"><?= e($book->getId()) ?></div>

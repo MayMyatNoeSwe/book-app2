@@ -70,17 +70,30 @@ try {
     ");
     echo "<p class='text-success'>✓ Order items table created</p>";
     
-    // Add price column to books table if it doesn't exist
+    // Add price columns to books table if they don't exist
     $stmt = $pdo->query("SHOW COLUMNS FROM books LIKE 'price'");
     if ($stmt->rowCount() == 0) {
         $pdo->exec("ALTER TABLE books ADD COLUMN price INT DEFAULT 15000 AFTER year");
-        echo "<p class='text-success'>✓ Added price column to books table (Kyats)</p>";
+        $pdo->exec("ALTER TABLE books ADD COLUMN borrow_price INT DEFAULT 5000 AFTER price");
+        echo "<p class='text-success'>✓ Added price & borrow_price columns to books table (Kyats)</p>";
         
-        // Set random prices for existing books (realistic Kyat values)
+        // Set random prices (5000+) and borrow prices (30-40%)
         $pdo->exec("UPDATE books SET price = (FLOOR(5 + (RAND() * 20)) * 1000) WHERE price IS NULL OR price = 0");
-        echo "<p class='text-success'>✓ Set initial Kyat prices for books</p>";
+        $pdo->exec("UPDATE books SET borrow_price = FLOOR(price * (0.3 + (RAND() * 0.1 / 100) * 100)) WHERE borrow_price IS NULL OR borrow_price = 0");
+        
+        // Ensure whole numbers for Kyats
+        $pdo->exec("UPDATE books SET borrow_price = (FLOOR(borrow_price / 100) * 100)");
+        echo "<p class='text-success'>✓ Set dynamic Kyat prices for books</p>";
     } else {
-        echo "<p class='text-info'>✓ Price column already exists</p>";
+        // Also check for borrow_price specifically if price exists
+        $stmt = $pdo->query("SHOW COLUMNS FROM books LIKE 'borrow_price'");
+        if ($stmt->rowCount() == 0) {
+            $pdo->exec("ALTER TABLE books ADD COLUMN borrow_price INT DEFAULT 5000 AFTER price");
+            $pdo->exec("UPDATE books SET borrow_price = FLOOR(price * (0.3 + (RAND() * 0.1)))");
+            $pdo->exec("UPDATE books SET borrow_price = (FLOOR(borrow_price / 100) * 100)");
+            echo "<p class='text-success'>✓ Added borrow_price column to existing scheme</p>";
+        }
+        echo "<p class='text-info'>✓ Price columns already exist</p>";
     }
     
     echo "<hr><h3 class='text-success'>✓ Shopping Cart Setup Complete!</h3>";

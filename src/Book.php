@@ -13,6 +13,8 @@ class Book
     protected int $totalCopies = 1;
     protected int $availableCopies = 1;
     protected float $averageRating = 0.0;
+    protected int $price = 15000;
+    protected int $borrowPrice = 5000;
 
     public function __construct(
         string $title,
@@ -21,7 +23,9 @@ class Book
         int $totalCopies = 1,
         ?string $coverImage = null,
         string $category = 'Uncategorized',
-        ?string $id = null
+        ?string $id = null,
+        ?int $price = 15000,
+        ?int $borrowPrice = 5000
     ) {
         $this->id = $id ?? uniqid('book_', true);
         $this->title = trim($title);
@@ -31,6 +35,8 @@ class Book
         $this->category = $category;
         $this->totalCopies = max(1, $totalCopies); //minium 1 
         $this->availableCopies = $this->totalCopies; //Initially all available
+        $this->price = $price ?? 15000;
+        $this->borrowPrice = $borrowPrice ?? 5000;
     }
     // ==================== Getters ====================
     public function getId(): string
@@ -72,6 +78,14 @@ class Book
     public function getAverageRating(): float
     {
         return $this->averageRating;
+    }
+    public function getPrice(): int
+    {
+        return $this->price;
+    }
+    public function getBorrowPrice(): int
+    {
+        return $this->borrowPrice;
     }
     public function setAverageRating(float $rating): void
     {
@@ -120,6 +134,8 @@ class Book
             'category' => $this->category,
             'total_copies' => $this->totalCopies,
             'available_copies' => $this->availableCopies,
+            'price' => $this->price,
+            'borrow_price' => $this->borrowPrice,
         ];
     }
     public static function fromArray(array $data): self
@@ -131,7 +147,9 @@ class Book
             $data['total_copies'] ?? 1,
             $data['cover_image'] ?? null,
             $data['category'] ?? 'Uncategorized',
-            $data['id'] ?? null
+            $data['id'] ?? null,
+            $data['price'] ?? 15000,
+            $data['borrow_price'] ?? 5000
         );
         $book->availableCopies = $data['available_copies'] ?? $book->totalCopies;
         $book->averageRating = (float)($data['average_rating'] ?? 0.0);

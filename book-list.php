@@ -682,12 +682,12 @@ include 'views/header.php';
                         <div class="bl-card-body">
                             <div class="bl-card-cat"><?= e($book->getCategory()) ?></div>
                             <div class="bl-card-title" title="<?= e($book->getTitle()) ?>"><?= e($book->getTitle()) ?></div>
-                            <div class="bl-card-author">
-                                <span>by <strong style="color:var(--bookhouse-text);"><?= e($book->getAuthor()) ?></strong></span>
-                                <span class="year"><?= $book->getYear() ?></span>
+                            <div class="bl-card-author" style="font-size: 12px; color: var(--bookhouse-text-muted); margin-bottom: 4px;">
+                                by <strong style="color:var(--bookhouse-text);"><?= e($book->getAuthor()) ?></strong> · <?= $book->getYear() ?>
                             </div>
-                            <div class="bl-card-price" style="font-weight: 800; font-size: 14px; color: var(--bookhouse-orange); margin-top: 4px;">
-                                <?= number_format($book->getPrice()) ?> Ks
+                            <div class="bl-card-price" style="font-size: 13px; margin-top: 6px;">
+                                <div style="color: var(--bookhouse-orange); font-weight: 800;">Buy: <?= number_format($book->getPrice()) ?> Ks</div>
+                                <div style="color: var(--bookhouse-text-muted); font-size: 11px; font-weight: 600;">Borrow: <?= number_format($book->getBorrowPrice()) ?> Ks</div>
                             </div>
                         </div>
                     </div>
@@ -713,8 +713,10 @@ include 'views/header.php';
                         <div class="cat"><?= e($book->getCategory()) ?></div>
                         <h5><?= e($book->getTitle()) ?></h5>
                         <div class="meta">by <strong><?= e($book->getAuthor()) ?></strong> · <?= $book->getYear() ?></div>
-                        <div class="bl-list-price" style="font-weight: 800; color: var(--bookhouse-orange); margin-top: 4px;">
-                            <?= number_format($book->getPrice()) ?> Ks
+                        <div class="bl-list-price" style="font-size: 13px; margin-top: 4px;">
+                            <span style="color: var(--bookhouse-orange); font-weight: 800;">Buy: <?= number_format($book->getPrice()) ?> Ks</span>
+                            <span style="margin: 0 8px; color: #ddd;">|</span>
+                            <span style="color: var(--bookhouse-text-muted); font-weight: 600;">Borrow: <?= number_format($book->getBorrowPrice()) ?> Ks</span>
                         </div>
                     </div>
                     <div class="bl-list-status">
