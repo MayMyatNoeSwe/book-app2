@@ -139,6 +139,20 @@ class Library
     // ================ business logic ================
     public function borrowBook(string $bookId, int $userId): bool
     {
+        // Check if user has already borrowed 3 books at a time
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+        $stmt->execute([$userId]);
+        $unreturnedBooks = (int)$stmt->fetchColumn();
+        
+        if ($unreturnedBooks >= 3) {
+            return false;
+        }
+
+        // Prevent borrowing the exact same book multiple times
+        if ($this->isCurrentlyBorrowing($userId, $bookId)) {
+            return false;
+        }
+
         $book = $this->getBookById($bookId);
         if (!$book || !$book->borrowCopy()) return false;
 

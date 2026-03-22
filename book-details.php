@@ -11,8 +11,8 @@ use App\EBook;
 
 $library = new Library();
 
-// Get book ID from URL
-$bookId = $_GET['id'] ?? null;
+// Get book ID from URL or POST data
+$bookId = $_GET['id'] ?? $_POST['id'] ?? null;
 if (!$bookId) {
     header('Location: index.php');
     exit;
@@ -36,13 +36,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
     
     switch ($action) {
         case 'borrow':
-            if ($library->borrowBook($bookId, $userId)) {
-                $message = 'Book borrowed successfully! Due date: ' . date('M j, Y', strtotime('+14 days'));
-                $messageType = 'success';
-                $book = $library->getBookById($bookId);
-            } else {
-                $message = 'Unable to borrow this book. Please try again.';
+            $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+            $stmt->execute([$userId]);
+            $currentBorrows = (int)$stmt->fetchColumn();
+            
+            if ($currentBorrows >= 3) {
+                $message = 'You have reached the maximum borrow limit of 3 books. Please return a book first.';
                 $messageType = 'error';
+            } else {
+                if ($library->borrowBook($bookId, $userId)) {
+                    $message = 'Book borrowed successfully! Due date: ' . date('M j, Y', strtotime('+14 days'));
+                    $messageType = 'success';
+                    $book = $library->getBookById($bookId);
+                } else {
+                    $message = 'Unable to borrow this book. Please try again.';
+                    $messageType = 'error';
+                }
             }
             break;
             
@@ -110,8 +119,19 @@ try {
 
 // Check if user is currently borrowing
 $isCurrentlyBorrowing = false;
+$hasBorrowedBefore = false;
+$unreturnedBooksCount = 0;
 if (Auth::check()) {
     $isCurrentlyBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $bookId);
+    $userId = Auth::id();
+    $pdo = $library->getPdo();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    $hasBorrowedBefore = $stmt->fetchColumn() > 0;
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+    $stmt->execute([$userId]);
+    $unreturnedBooksCount = $stmt->fetchColumn();
 }
 
 // Calculate average rating
@@ -499,6 +519,10 @@ include 'views/header.php';
                     </div>
                     <?php endif; ?>
                     <div class="bd-meta-item">
+                        <div class="label">Price</div>
+                        <div class="value"><?= number_format($book->getPrice()) ?> Ks</div>
+                    </div>
+                    <div class="bd-meta-item">
                         <div class="label">Book ID</div>
                         <div class="value" style="font-family:monospace; font-size:13px;"><?= e($book->getId()) ?></div>
                     </div>
@@ -526,7 +550,7 @@ include 'views/header.php';
                                 <button type="button" class="bd-btn bd-btn-primary" data-bs-toggle="modal" data-bs-target="#borrowConfirmModal">
                                     <i class="fas fa-book"></i> Borrow Now
                                 </button>
-                                <button onclick="addToCart(<?= $bookId ?>)" class="bd-btn bd-btn-outline"><i class="fas fa-shopping-cart"></i> Add to Cart</button>
+                                <button onclick="addToCart('<?= e($bookId) ?>')" class="bd-btn bd-btn-outline"><i class="fas fa-shopping-cart"></i> Add to Cart</button>
                             <?php else: ?>
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="action" value="reserve">
@@ -731,16 +755,41 @@ include 'views/header.php';
                         <div style="font-size: 13.5px; color: var(--bookhouse-text-muted); line-height: 1.5;">Return within 14 days. Late returns may incur a small fee.</div>
                     </div>
                 </div>
+
+                <!-- Borrowing Details Section -->
+                <?php if (Auth::check()): ?>
+                <div style="background: #ffffff; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+                    <h6 class="fw-800 mb-3" style="font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">Your Borrowing Summary</h6>
+                    <ul class="list-unstyled mb-0" style="font-size: 14px; color: var(--bookhouse-text); line-height: 1.8;">
+                        <li><i class="fas fa-calendar-day text-success me-2"></i><strong>Duration:</strong> 14 Days</li>
+                        <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
+                        <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
+                        <li>
+                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
+                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
+                            <?php if ($unreturnedBooksCount >= 3): ?>
+                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
+                            <?php elseif ($unreturnedBooksCount > 0): ?>
+                                <span class="text-danger small">(Please return on time)</span>
+                            <?php endif; ?>
+                        </li>
+                    </ul>
+                </div>
+                <?php endif; ?>
                 
-                <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px;">Ready to proceed?</div>
+                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+                    <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px; text-align: center; color: #dc2626;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</div>
+                <?php else: ?>
+                    <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px; text-align: center;">Ready to proceed?</div>
+                <?php endif; ?>
                 
                 <form method="POST">
                     <input type="hidden" name="action" value="borrow">
-                    <button type="submit" class="btn w-100" style="background: #d48b71; color: #fff; padding: 14px; border-radius: 999px; font-weight: 700; font-size: 15px; border: none; box-shadow: 0 4px 12px rgba(212,139,113,0.3); margin-bottom: 12px; transition: filter 0.2s;">
+                    <button type="submit" class="btn w-100" style="background: #d48b71; color: #fff; padding: 14px; border-radius: 999px; font-weight: 700; font-size: 15px; border: none; box-shadow: 0 4px 12px rgba(212,139,113,0.3); margin-bottom: 12px; transition: filter 0.2s;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
                         <i class="fas fa-check me-2"></i> Confirm & Borrow
                     </button>
                     <button type="button" class="btn w-100" data-bs-dismiss="modal" style="background: transparent; border: none; color: var(--bookhouse-text-muted); font-size: 14px; padding: 10px; transition: color 0.2s;">
-                        Maybe later
+                        <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?>
                     </button>
                 </form>
             </div>

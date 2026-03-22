@@ -23,7 +23,7 @@ try {
         CREATE TABLE IF NOT EXISTS cart (
             id INT PRIMARY KEY AUTO_INCREMENT,
             user_id INT NOT NULL,
-            book_id INT NOT NULL,
+            book_id VARCHAR(50) NOT NULL,
             quantity INT NOT NULL DEFAULT 1,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -59,7 +59,7 @@ try {
         CREATE TABLE IF NOT EXISTS order_items (
             id INT PRIMARY KEY AUTO_INCREMENT,
             order_id INT NOT NULL,
-            book_id INT NOT NULL,
+            book_id VARCHAR(50) NOT NULL,
             quantity INT NOT NULL,
             price DECIMAL(10, 2) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -73,12 +73,12 @@ try {
     // Add price column to books table if it doesn't exist
     $stmt = $pdo->query("SHOW COLUMNS FROM books LIKE 'price'");
     if ($stmt->rowCount() == 0) {
-        $pdo->exec("ALTER TABLE books ADD COLUMN price DECIMAL(10, 2) DEFAULT 9.99 AFTER year");
-        echo "<p class='text-success'>✓ Added price column to books table</p>";
+        $pdo->exec("ALTER TABLE books ADD COLUMN price INT DEFAULT 15000 AFTER year");
+        echo "<p class='text-success'>✓ Added price column to books table (Kyats)</p>";
         
-        // Set random prices for existing books
-        $pdo->exec("UPDATE books SET price = ROUND(5 + (RAND() * 20), 2) WHERE price IS NULL");
-        echo "<p class='text-success'>✓ Set prices for existing books</p>";
+        // Set random prices for existing books (realistic Kyat values)
+        $pdo->exec("UPDATE books SET price = (FLOOR(5 + (RAND() * 20)) * 1000) WHERE price IS NULL OR price = 0");
+        echo "<p class='text-success'>✓ Set initial Kyat prices for books</p>";
     } else {
         echo "<p class='text-info'>✓ Price column already exists</p>";
     }

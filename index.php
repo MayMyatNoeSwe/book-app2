@@ -228,23 +228,31 @@ $heroCover = $featuredBook
             <div class="stats-grid">
                 <div class="stat-card reveal" data-delay="0.05">
                     <div class="stat-icon"><i class="fas fa-book-open"></i></div>
-                    <div class="stat-number" data-count="<?= (int)($bookStats['total_books'] ?? 0) ?>">0</div>
-                    <p class="stat-label">Books in our catalog</p>
+                    <div class="stat-info">
+                        <div class="stat-number" data-count="<?= (int)($bookStats['total_books'] ?? 0) ?>">0</div>
+                        <p class="stat-label">BOOKS IN OUR<br>CATALOG</p>
+                    </div>
                 </div>
                 <div class="stat-card reveal" data-delay="0.12">
                     <div class="stat-icon accent-mint"><i class="fas fa-pen-nib"></i></div>
-                    <div class="stat-number" data-count="<?= (int)($bookStats['total_authors'] ?? 0) ?>">0</div>
-                    <p class="stat-label">Authors represented</p>
+                    <div class="stat-info">
+                        <div class="stat-number" data-count="<?= (int)($bookStats['total_authors'] ?? 0) ?>">0</div>
+                        <p class="stat-label">AUTHORS<br>REPRESENTED</p>
+                    </div>
                 </div>
                 <div class="stat-card reveal" data-delay="0.19">
                     <div class="stat-icon accent-gold"><i class="fas fa-star"></i></div>
-                    <div class="stat-number" data-count="<?= (int)($bookStats['total_reviews'] ?? 0) ?>">0</div>
-                    <p class="stat-label">Reader reviews</p>
+                    <div class="stat-info">
+                        <div class="stat-number" data-count="<?= (int)($bookStats['total_reviews'] ?? 0) ?>">0</div>
+                        <p class="stat-label">READER REVIEWS</p>
+                    </div>
                 </div>
                 <div class="stat-card reveal" data-delay="0.26">
                     <div class="stat-icon accent-slate"><i class="fas fa-arrow-trend-up"></i></div>
-                    <div class="stat-number" data-count="<?= (int)($bookStats['monthly_borrows'] ?? 0) ?>">0</div>
-                    <p class="stat-label">Monthly borrows</p>
+                    <div class="stat-info">
+                        <div class="stat-number" data-count="<?= (int)($bookStats['monthly_borrows'] ?? 0) ?>">0</div>
+                        <p class="stat-label">MONTHLY BORROWS</p>
+                    </div>
                 </div>
             </div>
         </div>

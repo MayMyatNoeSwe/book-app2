@@ -18,10 +18,10 @@ if (!Auth::check()) {
 
 // Get JSON data
 $input = json_decode(file_get_contents('php://input'), true);
-$bookId = (int) ($input['book_id'] ?? 0);
+$bookId = $input['book_id'] ?? null;
 $quantity = (int) ($input['quantity'] ?? 1);
 
-if ($bookId <= 0) {
+if (empty($bookId)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid book ID']);
     exit;

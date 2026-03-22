@@ -48,10 +48,11 @@ function addToCart(bookId, quantity = 1) {
                 title: 'Added to Cart!',
                 text: data.message,
                 confirmButtonColor: '#E07A5F',
-                timer: 2000,
+                timer: 1000,
                 showConfirmButton: false
+            }).then(() => {
+                window.location.href = 'cart.php';
             });
-            loadCartCount();
         } else {
             Swal.fire({
                 icon: 'error',

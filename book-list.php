@@ -67,6 +67,21 @@ if ($search) {
     $pageTitle = "Book Library";
 }
 
+// User Borrowing Stats for the Modal
+$hasBorrowedBefore = false;
+$unreturnedBooksCount = 0;
+if (Auth::check()) {
+    $userId = Auth::id();
+    $pdo = $library->getPdo();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    $hasBorrowedBefore = $stmt->fetchColumn() > 0;
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+    $stmt->execute([$userId]);
+    $unreturnedBooksCount = $stmt->fetchColumn();
+}
+
 include 'views/header.php';
 ?>
 
@@ -299,6 +314,20 @@ include 'views/header.php';
 }
 .bl-card-overlay .btn-details:hover {
     background: #fff;
+}
+.bl-card-overlay .btn-cart {
+    display: block; text-align: center;
+    padding: 10px; border-radius: 12px;
+    background: transparent;
+    color: #fff; border: 1px solid rgba(255,255,255,0.6);
+    font-weight: 700; font-size: 13px;
+    cursor: pointer; margin-top: 8px;
+    transition: all 0.2s;
+    width: 100%;
+}
+.bl-card-overlay .btn-cart:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: #fff;
 }
 .bl-card-overlay .btn-borrow {
     display: block; text-align: center;
@@ -638,10 +667,15 @@ include 'views/header.php';
                                     <i class="fas fa-arrow-right me-1"></i> View Details
                                 </a>
                                 <?php if (Auth::check() && $book->isAvailable()): ?>
-                                <button class="btn-borrow" onclick="quickBorrow('<?= e($book->getId()) ?>')">
-                                    <i class="fas fa-plus me-1"></i> Borrow Now
-                                </button>
+                                    <?php if (!$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                                    <button class="btn-borrow" onclick="quickBorrow('<?= e($book->getId()) ?>')">
+                                        <i class="fas fa-plus me-1"></i> Borrow Now
+                                    </button>
+                                    <?php endif; ?>
                                 <?php endif; ?>
+                                <button class="btn-cart" onclick="addToCart('<?= e($book->getId()) ?>')">
+                                    <i class="fas fa-shopping-cart me-1"></i> Add to Cart
+                                </button>
                             </div>
                         </div>
 
@@ -651,6 +685,9 @@ include 'views/header.php';
                             <div class="bl-card-author">
                                 <span>by <strong style="color:var(--bookhouse-text);"><?= e($book->getAuthor()) ?></strong></span>
                                 <span class="year"><?= $book->getYear() ?></span>
+                            </div>
+                            <div class="bl-card-price" style="font-weight: 800; font-size: 14px; color: var(--bookhouse-orange); margin-top: 4px;">
+                                <?= number_format($book->getPrice()) ?> Ks
                             </div>
                         </div>
                     </div>
@@ -676,6 +713,9 @@ include 'views/header.php';
                         <div class="cat"><?= e($book->getCategory()) ?></div>
                         <h5><?= e($book->getTitle()) ?></h5>
                         <div class="meta">by <strong><?= e($book->getAuthor()) ?></strong> · <?= $book->getYear() ?></div>
+                        <div class="bl-list-price" style="font-weight: 800; color: var(--bookhouse-orange); margin-top: 4px;">
+                            <?= number_format($book->getPrice()) ?> Ks
+                        </div>
                     </div>
                     <div class="bl-list-status">
                         <?php if ($book->isAvailable()): ?>
@@ -689,8 +729,13 @@ include 'views/header.php';
                     <div class="bl-list-actions">
                         <a href="book-details.php?id=<?= e($book->getId()) ?>" class="bl-btn-outline">Details</a>
                         <?php if (Auth::check() && $book->isAvailable()): ?>
-                        <button class="bl-btn-fill" onclick="quickBorrow('<?= e($book->getId()) ?>')">Borrow</button>
+                            <?php if (!$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                            <button class="bl-btn-fill" onclick="quickBorrow('<?= e($book->getId()) ?>')">Borrow</button>
+                            <?php endif; ?>
                         <?php endif; ?>
+                        <button class="bl-btn-outline" onclick="addToCart('<?= e($book->getId()) ?>')">
+                            <i class="fas fa-shopping-cart me-1"></i> Cart
+                        </button>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -757,20 +802,20 @@ include 'views/header.php';
 <!-- Quick Borrow Modal -->
 <div class="modal fade bl-modal" id="quickBorrowModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header text-white">
+        <div class="modal-content text-center shadow-lg">
+            <div class="modal-header text-white" style="background: linear-gradient(135deg, var(--bookhouse-orange), #c2664e);">
                 <div class="d-flex align-items-center gap-3">
                     <div style="width:44px;height:44px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;">
                         <i class="fas fa-bookmark fs-5"></i>
                     </div>
-                    <div>
+                    <div class="text-start">
                         <h5 class="modal-title fw-800 mb-0">Borrow Confirmation</h5>
                         <p class="mb-0 small opacity-75">You're one step away from your next read.</p>
                     </div>
                 </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body text-start">
                 <div class="p-3 rounded-4 border mb-3" style="background: rgba(224,122,95,0.04);">
                     <div class="d-flex gap-3">
                         <i class="fas fa-info-circle mt-1" style="color: var(--bookhouse-orange);"></i>
@@ -780,13 +825,39 @@ include 'views/header.php';
                         </div>
                     </div>
                 </div>
-                <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
+
+                <!-- Borrowing Details Section -->
+                <?php if (Auth::check()): ?>
+                <div class="p-3 rounded-4 border mb-4" style="background: #ffffff;">
+                    <h6 class="fw-800 mb-3" style="font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">Your Borrowing Summary</h6>
+                    <ul class="list-unstyled mb-0" style="font-size: 14px; color: var(--bookhouse-text); line-height: 1.8;">
+                        <li><i class="fas fa-calendar-day text-success me-2"></i><strong>Duration:</strong> 14 Days</li>
+                        <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
+                        <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
+                        <li>
+                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
+                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
+                            <?php if ($unreturnedBooksCount >= 3): ?>
+                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
+                            <?php elseif ($unreturnedBooksCount > 0): ?>
+                                <span class="text-danger small">(Please return on time)</span>
+                            <?php endif; ?>
+                        </li>
+                    </ul>
+                </div>
+                <?php endif; ?>
+
+                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+                    <p class="fw-700 text-center mb-0 text-danger" style="font-size: 16px;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</p>
+                <?php else: ?>
+                    <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
+                <?php endif; ?>
             </div>
-            <div class="modal-footer flex-column gap-2">
-                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;">
+            <div class="modal-footer flex-column gap-2 text-center">
+                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
                     <i class="fas fa-check me-2"></i>Confirm & Borrow
                 </button>
-                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal">Maybe later</button>
+                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?></button>
             </div>
         </div>
     </div>

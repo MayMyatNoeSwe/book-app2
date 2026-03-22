@@ -28,6 +28,9 @@ $cartCount = $cart->getCount($userId);
 include 'views/header.php';
 ?>
 
+</div> <!-- Close header container to allow full-width hero -->
+
+
 <style>
 /* ─── Cart Premium ─── */
 .ct-hero {
@@ -157,11 +160,27 @@ include 'views/header.php';
 
 /* Summary card */
 .ct-summary {
-    background: #fff; border-radius: 20px;
+    background: #ffffff !important;
+    border-radius: 24px;
     border: 1px solid rgba(0,0,0,0.06);
-    padding: 28px; position: sticky; top: 90px;
+    padding: 30px;
+    box-shadow: 0 15px 45px rgba(61,64,91,0.08);
+    position: relative;
+    z-index: 999 !important;
 }
-[data-bs-theme="dark"] .ct-summary { background: #1e293b; border-color: rgba(255,255,255,0.06); }
+@media (max-width: 991px) {
+    .ct-summary {
+        margin-top: 30px;
+    }
+}
+@media (min-width: 992px) {
+    .ct-summary-wrapper {
+        position: sticky;
+        top: 100px;
+        z-index: 999;
+    }
+}
+[data-bs-theme="dark"] .ct-summary { background: #1e293b !important; border-color: rgba(255,255,255,0.06); }
 .ct-summary h4 {
     font-weight: 800; font-size: 18px; color: var(--bookhouse-text); margin-bottom: 24px;
 }
@@ -196,22 +215,21 @@ include 'views/header.php';
 
 /* Promo */
 .ct-promo {
-    background: #fff; border-radius: 16px;
-    border: 1px solid rgba(0,0,0,0.06);
-    padding: 20px; margin-top: 14px;
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px dashed rgba(0,0,0,0.08);
 }
-[data-bs-theme="dark"] .ct-promo { background: #1e293b; border-color: rgba(255,255,255,0.06); }
-.ct-promo h6 { font-weight: 700; font-size: 14px; color: var(--bookhouse-text); margin-bottom: 12px; }
+[data-bs-theme="dark"] .ct-promo { border-color: rgba(255,255,255,0.08); }
+.ct-promo h6 { font-weight: 700; font-size: 13px; color: var(--bookhouse-text); margin-bottom: 12px; }
 .ct-promo-row { display: flex; gap: 8px; }
 .ct-promo-row input {
-    flex: 1; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px;
-    padding: 10px 16px; font-size: 13px; background: rgba(0,0,0,0.02);
-    color: var(--bookhouse-text); outline: none;
+    flex: 1; border: 1.5px solid rgba(0,0,0,0.08); border-radius: 12px;
+    padding: 10px 14px; font-size: 13px; background: rgba(0,0,0,0.02);
+    color: var(--bookhouse-text); outline: none; transition: all 0.2s;
 }
 [data-bs-theme="dark"] .ct-promo-row input { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
-.ct-promo-row input:focus { border-color: var(--bookhouse-orange); }
+.ct-promo-row input:focus { border-color: var(--bookhouse-orange); box-shadow: 0 0 0 4px rgba(224,122,95,0.1); }
 .ct-promo-row button {
-    padding: 10px 20px; border: 2px solid rgba(0,0,0,0.08) !important;
+    padding: 10px 18px; border: 1.5px solid rgba(0,0,0,0.1) !important;
     border-radius: 12px; background: transparent;
     color: var(--bookhouse-text); font-weight: 700; font-size: 13px;
     cursor: pointer; transition: all 0.2s;
@@ -293,9 +311,9 @@ include 'views/header.php';
                 </a>
             </div>
         <?php else: ?>
-            <div class="row g-4">
+            <div class="row g-4 align-items-start">
                 <!-- Cart Items -->
-                <div class="col-lg-8">
+                <div class="col-md-7 col-lg-8">
                     <?php foreach ($cartItems as $item): ?>
                     <div class="ct-item" id="cart-item-<?= $item['id'] ?>">
                         <!-- Cover -->
@@ -323,8 +341,8 @@ include 'views/header.php';
 
                         <!-- Price -->
                         <div class="ct-price">
-                            <div class="total">$<?= number_format($item['price'] * $item['quantity'], 2) ?></div>
-                            <div class="each">$<?= number_format($item['price'], 2) ?> each</div>
+                            <div class="total"><?= number_format($item['price'] * $item['quantity']) ?> Ks</div>
+                            <div class="each"><?= number_format($item['price']) ?> Ks each</div>
                         </div>
 
                         <!-- Remove -->
@@ -342,45 +360,47 @@ include 'views/header.php';
                 </div>
 
                 <!-- Summary -->
-                <div class="col-lg-4">
-                    <div class="ct-summary">
-                        <h4>Order Summary</h4>
+                <div class="col-md-5 col-lg-4">
+                    <div class="ct-summary-wrapper">
+                        <div class="ct-summary">
+                            <h4>Order Summary</h4>
 
-                        <div class="ct-summary-row">
-                            <span>Subtotal (<?= $cartCount ?> items)</span>
-                            <span class="val" id="subtotal">$<?= number_format($cartTotal, 2) ?></span>
-                        </div>
-                        <div class="ct-summary-row">
-                            <span>Shipping</span>
-                            <span class="val" style="color:#10b981;">FREE</span>
-                        </div>
-                        <div class="ct-summary-row">
-                            <span>Tax</span>
-                            <span class="val">$0.00</span>
-                        </div>
+                            <div class="ct-summary-row">
+                                <span>Subtotal (<?= $cartCount ?> items)</span>
+                                <span class="val" id="subtotal"><?= number_format($cartTotal) ?> Ks</span>
+                            </div>
+                            <div class="ct-summary-row">
+                                <span>Shipping</span>
+                                <span class="val" style="color:#10b981;">FREE</span>
+                            </div>
+                            <div class="ct-summary-row">
+                                <span>Tax</span>
+                                <span class="val">0 Ks</span>
+                            </div>
 
-                        <hr class="ct-summary-divider">
+                            <hr class="ct-summary-divider">
 
-                        <div class="ct-summary-total">
-                            <span>Total</span>
-                            <span class="amount" id="total">$<?= number_format($cartTotal, 2) ?></span>
-                        </div>
+                            <div class="ct-summary-total">
+                                <span>Total</span>
+                                <span class="amount" id="total"><?= number_format($cartTotal) ?> Ks</span>
+                            </div>
 
-                        <button class="ct-checkout-btn" onclick="proceedToCheckout()">
-                            <i class="fas fa-lock"></i> Proceed to Checkout
-                        </button>
+                            <!-- Promo Integrated -->
+                            <div class="ct-promo">
+                                <h6><i class="fas fa-tag me-1" style="color:var(--bookhouse-orange);"></i> Have a promo code?</h6>
+                                <div class="ct-promo-row">
+                                    <input type="text" placeholder="Enter code">
+                                    <button type="button">Apply</button>
+                                </div>
+                            </div>
 
-                        <div class="ct-secure">
-                            <i class="fas fa-shield-alt me-1"></i> Secure & encrypted checkout
-                        </div>
-                    </div>
+                            <button class="ct-checkout-btn" onclick="proceedToCheckout()">
+                                <i class="fas fa-lock"></i> Proceed to Checkout
+                            </button>
 
-                    <!-- Promo -->
-                    <div class="ct-promo">
-                        <h6><i class="fas fa-tag me-1" style="color:var(--bookhouse-orange);"></i> Have a promo code?</h6>
-                        <div class="ct-promo-row">
-                            <input type="text" placeholder="Enter code">
-                            <button type="button">Apply</button>
+                            <div class="ct-secure">
+                                <i class="fas fa-shield-alt me-1"></i> Secure & encrypted checkout
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -440,4 +460,5 @@ function proceedToCheckout() {
 }
 </script>
 
+<div class="container pb-5"> <!-- Re-open container for footer -->
 <?php include 'views/footer.php'; ?>
