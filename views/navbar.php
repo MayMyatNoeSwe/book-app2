@@ -349,6 +349,7 @@ $navCats = getCategories();
                 <ul class="dropdown-menu dropdown-menu-end bh-dropdown shadow border-0">
                     <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/user-details.php"><i class="far fa-user me-2"></i>My Profile</a></li>
                     <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/borrow.php"><i class="fas fa-book-reader me-2"></i>Borrowing</a></li>
+                    <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/user-details.php#orders-section"><i class="fas fa-shopping-bag me-2"></i>Orders</a></li>
                     <?php if (isAdmin()): ?>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item bh-dropdown-item text-primary" href="<?= baseUrl() ?>/admin/index.php"><i class="fas fa-shield-alt me-2"></i>Admin Dashboard</a></li>

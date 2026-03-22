@@ -126,8 +126,8 @@ $heroCover = $featuredBook
                     A premium reading experience designed around clarity, craft, and the books that shape your next idea.
                 </p>
                 <div class="hero-cta-group reveal" data-delay="0.24">
-                    <a href="<?= baseUrl() ?>/cart.php?add=<?= $featuredBook ? $featuredBook->getId() : 1 ?>" class="btn btn-primary hero-btn">
-                        <i class="fas fa-shopping-cart me-2"></i>Add to Cart
+                    <a href="book-details.php?id=<?= $featuredBook ? $featuredBook->getId() : 1 ?>" class="btn btn-primary hero-btn" style="<?= ($featuredBook && !$featuredBook->isAvailable()) ? 'background:#524f7d;border-color:#524f7d;' : '' ?>">
+                        <i class="fas <?= ($featuredBook && $featuredBook->isAvailable()) ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-2"></i><?= ($featuredBook && !$featuredBook->isAvailable()) ? 'Pre-order' : 'Add to Cart' ?>
                     </a>
                     <a href="book-details.php?id=<?= $featuredBook ? $featuredBook->getId() : 1 ?>" class="btn btn-outline-dark hero-btn-ghost">
                         Read Details
@@ -293,7 +293,9 @@ $heroCover = $featuredBook
                         <?php endif; ?>
                         <h6 class="strip-title" title="<?= e($book->getTitle()) ?>"><?= e($book->getTitle()) ?></h6>
                         <p class="strip-author">By <?= e($book->getAuthor()) ?></p>
-                        <a href="book-details.php?id=<?= e($book->getId()) ?>" class="btn strip-cta">Buy Now</a>
+                        <a href="book-details.php?id=<?= e($book->getId()) ?>" class="btn strip-cta" style="<?= !$book->isAvailable() ? 'background:#524f7d;color:#fff;' : '' ?>">
+                            <?= $book->isAvailable() ? 'Buy Now' : 'Pre-order' ?>
+                        </a>
                     </div>
                 </article>
                 <?php endforeach; ?>
@@ -427,7 +429,9 @@ $heroCover = $featuredBook
                         <span class="new-badge">New</span>
                         <h6 class="strip-title" title="<?= e($book->getTitle()) ?>"><?= e($book->getTitle()) ?></h6>
                         <p class="strip-author">By <?= e($book->getAuthor()) ?></p>
-                        <a href="book-details.php?id=<?= e($book->getId()) ?>" class="btn strip-cta">Buy Now</a>
+                        <a href="book-details.php?id=<?= e($book->getId()) ?>" class="btn strip-cta" style="<?= !$book->isAvailable() ? 'background:#524f7d;color:#fff;' : '' ?>">
+                            <?= $book->isAvailable() ? 'Buy Now' : 'Pre-order' ?>
+                        </a>
                     </div>
                 </article>
                 <?php endforeach; ?>

@@ -514,9 +514,10 @@ include 'views/header.php';
                         <img src="<?= $coverUrl ?>" alt="<?= e($book->getTitle()) ?>" loading="lazy" onerror="this.src='<?= $fallback ?>'">
                         <div class="ad-book-overlay">
                             <a href="book-details.php?id=<?= e($book->getId()) ?>" class="ad-ol-details">View Details</a>
-                            <?php if (Auth::check() && $book->isAvailable()): ?>
-                            <button class="ad-ol-borrow" onclick="addToCart(<?= $book->getId() ?>)">Borrow</button>
-                            <?php endif; ?>
+                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d;' : '' ?>">
+                                <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i>
+                                <?= $book->isAvailable() ? 'Add to Cart' : 'Pre-order' ?>
+                            </button>
                         </div>
                     </div>
                     <div class="ad-book-body">
@@ -564,9 +565,10 @@ include 'views/header.php';
                         <img src="<?= $coverUrl ?>" alt="<?= e($book->getTitle()) ?>" loading="lazy" onerror="this.src='<?= $fallback ?>'">
                         <div class="ad-book-overlay">
                             <a href="book-details.php?id=<?= e($book->getId()) ?>" class="ad-ol-details">View Details</a>
-                            <?php if (Auth::check() && $book->isAvailable()): ?>
-                            <button class="ad-ol-borrow" onclick="addToCart(<?= $book->getId() ?>)">Borrow</button>
-                            <?php endif; ?>
+                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d;' : '' ?>">
+                                <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i>
+                                <?= $book->isAvailable() ? 'Add to Cart' : 'Pre-order' ?>
+                            </button>
                         </div>
                     </div>
                     <div class="ad-book-body">

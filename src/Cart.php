@@ -46,7 +46,7 @@ class Cart
     {
         $stmt = $this->pdo->prepare("
             SELECT c.id, c.book_id, c.quantity, c.added_at,
-                   b.title, b.author, b.price, b.year, b.category
+                   b.title, b.author, b.price, b.year, b.category, b.available_copies, b.cover_image
             FROM cart c
             JOIN books b ON c.book_id = b.id
             WHERE c.user_id = ?
@@ -141,22 +141,28 @@ class Cart
                 throw new \Exception("Cart is empty");
             }
 
-            // Calculate total
+            // Calculate subtotal
             $total = $this->getTotal($userId);
+
+            $shippingCost = (float) ($orderData['shipping_cost'] ?? 0);
+            $totalAmount = $total + $shippingCost;
 
             // Generate order number
             $orderNumber = 'ORD-' . date('Ymd') . '-' . strtoupper(substr(md5(uniqid()), 0, 8));
 
             // Create order
             $stmt = $this->pdo->prepare("
-                INSERT INTO orders (user_id, order_number, total_amount, payment_method, shipping_address, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO orders (user_id, order_number, total_amount, shipping_cost, payment_method, delivery_method, delivery_location, shipping_address, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $userId,
                 $orderNumber,
-                $total,
+                $totalAmount,
+                $shippingCost,
                 $orderData['payment_method'] ?? 'cash',
+                $orderData['delivery_method'] ?? null,
+                $orderData['delivery_location'] ?? null,
                 $orderData['shipping_address'] ?? '',
                 $orderData['notes'] ?? ''
             ]);
@@ -229,7 +235,7 @@ class Cart
 
         // Get order items
         $stmt = $this->pdo->prepare("
-            SELECT oi.*, b.title, b.author
+            SELECT oi.*, b.title, b.author, b.cover_image
             FROM order_items oi
             JOIN books b ON oi.book_id = b.id
             WHERE oi.order_id = ?

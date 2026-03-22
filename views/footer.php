@@ -11,11 +11,11 @@ use App\Auth;
 <!-- Custom Animations -->
 <script src="<?= baseUrl() ?>/public/js/animations.js"></script>
 
-<!-- Cart Count Loader -->
-<?php if (Auth::check()): ?>
+<!-- Cart Count Loader & General Functions -->
 <script>
 // Load cart count
 function loadCartCount() {
+    <?php if (Auth::check()): ?>
     fetch('api/cart_count.php')
         .then(response => response.json())
         .then(data => {
@@ -28,6 +28,7 @@ function loadCartCount() {
             }
         })
         .catch(error => console.error('Error loading cart count:', error));
+    <?php endif; ?>
 }
 
 // Load on page load
@@ -35,6 +36,23 @@ document.addEventListener('DOMContentLoaded', loadCartCount);
 
 // Add to cart function (global)
 function addToCart(bookId, quantity = 1) {
+    <?php if (!Auth::check()): ?>
+    Swal.fire({
+        icon: 'info',
+        title: 'Login Required',
+        text: 'Please login to add items to your cart.',
+        showCancelButton: true,
+        confirmButtonText: 'Login Now',
+        confirmButtonColor: '#E07A5F',
+        cancelButtonText: 'Later'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
+        }
+    });
+    return;
+    <?php endif; ?>
+
     fetch('api/cart_add.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -73,7 +91,6 @@ function addToCart(bookId, quantity = 1) {
     });
 }
 </script>
-<?php endif; ?>
 
 <!-- ═══════ PREMIUM FOOTER ═══════ -->
 <style>

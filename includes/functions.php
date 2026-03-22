@@ -431,23 +431,41 @@ SVG;
  */
 function getBookCoverUrl($book, string $title = '', string $author = ''): string
 {
-    // If $book is an object with getCoverImage method
-    if (is_object($book) && method_exists($book, 'getCoverImage')) {
-        $coverImage = $book->getCoverImage();
-        if ($coverImage && file_exists(APP_ROOT . '/public/uploads/covers/' . $coverImage)) {
-            return baseUrl() . '/public/uploads/covers/' . $coverImage;
+    $coverImage = null;
+    $extractedTitle = $title;
+    $extractedAuthor = $author;
+
+    // 1. Extract cover image and metadata based on input type
+    if (is_object($book)) {
+        if (method_exists($book, 'getCoverImage')) {
+            $coverImage = $book->getCoverImage();
+        } elseif (isset($book->cover_image)) {
+            $coverImage = $book->cover_image;
         }
-        // Get title and author from book object for dummy cover
-        $title = method_exists($book, 'getTitle') ? $book->getTitle() : $title;
-        $author = method_exists($book, 'getAuthor') ? $book->getAuthor() : $author;
+        $extractedTitle = method_exists($book, 'getTitle') ? $book->getTitle() : ($book->title ?? $extractedTitle);
+        $extractedAuthor = method_exists($book, 'getAuthor') ? $book->getAuthor() : ($book->author ?? $extractedAuthor);
+    } elseif (is_array($book)) {
+        $coverImage = $book['cover_image'] ?? null;
+        $extractedTitle = $book['title'] ?? $extractedTitle;
+        $extractedAuthor = $book['author'] ?? $extractedAuthor;
+    } elseif (is_string($book)) {
+        $coverImage = $book;
     }
-    // If $book is a string (cover image filename)
-    elseif (is_string($book) && !empty($book)) {
-        if (file_exists(APP_ROOT . '/public/uploads/covers/' . $book)) {
-            return baseUrl() . '/public/uploads/covers/' . $book;
+
+    // 2. Resolve the cover image path/URL
+    if ($coverImage) {
+        // If it's already a full URL
+        if (strpos($coverImage, 'http://') === 0 || strpos($coverImage, 'https://') === 0) {
+            return $coverImage;
+        }
+        
+        // If it's a local file
+        $localPath = APP_ROOT . '/public/uploads/covers/' . $coverImage;
+        if (file_exists($localPath)) {
+            return baseUrl() . '/public/uploads/covers/' . $coverImage;
         }
     }
     
-    // Return dummy cover if no valid cover found
-    return getDummyBookCover($title, $author);
+    // 3. Fallback to dummy cover
+    return getDummyBookCover($extractedTitle, $extractedAuthor);
 }

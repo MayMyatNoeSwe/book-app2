@@ -659,7 +659,7 @@ include 'views/header.php';
                             <?php elseif ($book->isAvailable()): ?>
                                 <span class="bl-card-badge available"><i class="fas fa-check me-1"></i>Available</span>
                             <?php else: ?>
-                                <span class="bl-card-badge borrowed"><i class="fas fa-clock me-1"></i>Out</span>
+                                <span class="bl-card-badge borrowed" style="background:#ef4444;"><i class="fas fa-exclamation-circle me-1"></i>Out of Stock</span>
                             <?php endif; ?>
 
                             <div class="bl-card-overlay">
@@ -673,8 +673,10 @@ include 'views/header.php';
                                     </button>
                                     <?php endif; ?>
                                 <?php endif; ?>
-                                <button class="btn-cart" onclick="addToCart('<?= e($book->getId()) ?>')">
-                                    <i class="fas fa-shopping-cart me-1"></i> Add to Cart
+                                
+                                <button class="btn-cart" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background: #524f7d; border-color: #524f7d; color: #fff;' : '' ?>">
+                                    <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i> 
+                                    <?= $book->isAvailable() ? 'Add to Cart' : 'Pre-order' ?>
                                 </button>
                             </div>
                         </div>
@@ -724,8 +726,8 @@ include 'views/header.php';
                             <span class="dot green"></span>
                             <span style="color:#10b981;">Available</span>
                         <?php else: ?>
-                            <span class="dot red"></span>
-                            <span style="color:#ef4444;">Borrowed</span>
+                            <span class="dot red" style="background:#ef4444;"></span>
+                            <span style="color:#ef4444;">Out of Stock</span>
                         <?php endif; ?>
                     </div>
                     <div class="bl-list-actions">
@@ -735,8 +737,8 @@ include 'views/header.php';
                             <button class="bl-btn-fill" onclick="quickBorrow('<?= e($book->getId()) ?>')">Borrow</button>
                             <?php endif; ?>
                         <?php endif; ?>
-                        <button class="bl-btn-outline" onclick="addToCart('<?= e($book->getId()) ?>')">
-                            <i class="fas fa-shopping-cart me-1"></i> Cart
+                        <button class="<?= $book->isAvailable() ? 'bl-btn-outline' : 'bl-btn-fill' ?>" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background: #524f7d; border-color: #524f7d;' : '' ?>">
+                            <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i> <?= $book->isAvailable() ? 'Cart' : 'Pre-order' ?>
                         </button>
                     </div>
                 </div>

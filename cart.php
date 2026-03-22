@@ -213,6 +213,49 @@ include 'views/header.php';
     font-size: 12px; color: var(--bookhouse-text-muted);
 }
 
+/* Redesign Helpers */
+.custom-select-premium {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C2.017 5.163 2.372 4.5 3.012 4.5h9.976c.64 0 .995.663.561 1.158l-4.796 5.482a.89.89 0 0 1-1.306 0L7.247 11.14z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px;
+    border: 1.5px solid rgba(0,0,0,0.06);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 14px;
+    background-color: rgba(0,0,0,0.02);
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.custom-select-premium:focus {
+    border-color: var(--bookhouse-orange);
+    box-shadow: 0 0 0 4px rgba(224,122,95,0.1);
+    background-color: #fff;
+    outline: none;
+}
+.btn-outline-premium {
+    border: 1.5px solid rgba(0,0,0,0.06) !important;
+    background: rgba(0,0,0,0.02);
+    border-radius: 12px;
+    padding: 12px 8px;
+    color: var(--bookhouse-text-muted);
+    transition: all 0.2s;
+}
+.btn-check:checked + .btn-outline-premium {
+    background: rgba(224,122,95,0.08) !important;
+    border-color: var(--bookhouse-orange) !important;
+    color: var(--bookhouse-orange) !important;
+}
+.btn-outline-premium:hover {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.1) !important;
+}
+[data-bs-theme="dark"] .custom-select-premium { background-color: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; }
+[data-bs-theme="dark"] .btn-outline-premium { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1) !important; color: #94a3b8; }
+[data-bs-theme="dark"] .btn-check:checked + .btn-outline-premium { background: rgba(224,122,95,0.15) !important; color: var(--bookhouse-orange) !important; }
+[data-bs-theme="dark"] #delivery-address { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; }
+
 /* Promo */
 .ct-promo {
     margin-top: 24px; padding-top: 20px;
@@ -326,8 +369,18 @@ include 'views/header.php';
                         <!-- Info -->
                         <div class="ct-item-info">
                             <div class="cat"><?= e($item['category']) ?></div>
-                            <h5><a href="book-details.php?id=<?= $item['book_id'] ?>"><?= e($item['title']) ?></a></h5>
-                            <div class="meta">by <?= e($item['author']) ?> · <?= $item['year'] ?></div>
+                            <h5>
+                                <a href="book-details.php?id=<?= $item['book_id'] ?>"><?= e($item['title']) ?></a>
+                                <?php if (($item['available_copies'] ?? 1) <= 0): ?>
+                                    <span class="badge" style="background:rgba(82,79,125,0.1); color:#524f7d; font-size:10px; padding:4px 8px; border:1px solid rgba(82,79,125,0.2); vertical-align:middle; margin-left:6px;">Pre-order</span>
+                                <?php endif; ?>
+                            </h5>
+                            <div class="meta">
+                                by <?= e($item['author']) ?> · <?= $item['year'] ?>
+                                <?php if (($item['available_copies'] ?? 1) <= 0): ?>
+                                    · <span style="color:#524f7d; font-weight:600;">Backorder (Expected in 7-14 days)</span>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
                         <!-- Quantity -->
@@ -365,20 +418,127 @@ include 'views/header.php';
                         <div class="ct-summary">
                             <h4>Order Summary</h4>
 
+                            <!-- Redesigned Delivery Section -->
+                            <div class="ct-delivery mt-4 pt-4" style="border-top: 2px solid rgba(0,0,0,0.03);">
+                                <h6 style="font-size: 14px; font-weight: 800; color: var(--bookhouse-text); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(224,122,95,0.1); display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-truck" style="color: var(--bookhouse-orange); font-size: 14px;"></i>
+                                    </div>
+                                    Delivery Details
+                                </h6>
+                                
+                                <!-- Township Selection -->
+                                <div class="mb-4">
+                                    <label class="form-label d-flex justify-content-between" style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                        <span>Select Your Township</span>
+                                        <span id="zone-label" style="color: var(--bookhouse-orange);">Inner Yangon</span>
+                                    </label>
+                                    <div class="position-relative">
+                                        <select class="form-select custom-select-premium" id="delivery-location" onchange="updateShippingCost()">
+                                            <optgroup label="Inner Yangon (1,500 Ks)">
+                                                <option value="ygn-inner" selected>Dagon</option>
+                                                <option value="ygn-inner">Hlaing</option>
+                                                <option value="ygn-inner">Bahan</option>
+                                                <option value="ygn-inner">Downtown (Pabedan, Kyauktada)</option>
+                                                <option value="ygn-inner">Sanchaung</option>
+                                                <option value="ygn-inner">Kamayut</option>
+                                                <option value="ygn-inner">Yankin</option>
+                                            </optgroup>
+                                            <optgroup label="Outer Yangon (2,000 Ks)">
+                                                <option value="ygn-outer">Thaketa</option>
+                                                <option value="ygn-outer">Thingangyun</option>
+                                                <option value="ygn-outer">North Okkalapa</option>
+                                                <option value="ygn-outer">South Okkalapa</option>
+                                                <option value="ygn-outer">Tamwe</option>
+                                                <option value="ygn-outer">Mayangone</option>
+                                            </optgroup>
+                                            <optgroup label="Distant/Suburbs (3,000 Ks)">
+                                                <option value="ygn-distant">Mingalardon</option>
+                                                <option value="ygn-distant">Insein</option>
+                                                <option value="ygn-distant">Hlaing Tharyar</option>
+                                                <option value="ygn-distant">South Dagon</option>
+                                                <option value="ygn-distant">East Dagon</option>
+                                                <option value="ygn-distant">North Dagon</option>
+                                                <option value="ygn-distant">Shwepyithar</option>
+                                            </optgroup>
+                                        <optgroup label="Yangon (Royal Express Serviceable)">
+                                            <option value="ygn-inner" selected>Yangon - Main Townships</option>
+                                            <option value="ygn-distant">Hlaing Tharyar / Mingalardon</option>
+                                            <option value="ygn-distant">Thanlyin / Kyauktan</option>
+                                        </optgroup>
+                                        <optgroup label="Mandalay Region">
+                                            <option value="city-easy">Mandalay City</option>
+                                            <option value="city-med">Pyin Oo Lwin</option>
+                                            <option value="city-med">Kyaukse</option>
+                                            <option value="city-med">Myingyan</option>
+                                            <option value="city-med">Mogok</option>
+                                        </optgroup>
+                                        <optgroup label="Bago Region">
+                                            <option value="city-easy">Bago City</option>
+                                            <option value="city-med">Pyay</option>
+                                            <option value="city-med">Taungoo</option>
+                                            <option value="city-med">Nyaunglebin</option>
+                                        </optgroup>
+                                        <optgroup label="Naypyidaw (Special Region)">
+                                            <option value="city-easy">Zabuthiri / Pyinmana</option>
+                                            <option value="city-easy">Ottarathiri / Tatkon</option>
+                                        </optgroup>
+                                        <optgroup label="Shan State (Check Availability)">
+                                            <option value="city-easy">Taunggyi</option>
+                                            <option value="city-med">Kalaw / Aung Pan</option>
+                                            <option value="city-med" disabled>Lashio (Svc Suspended)</option>
+                                            <option value="city-med" disabled>Muse (Svc Suspended)</option>
+                                            <option value="city-med" disabled>Tachileik (Svc Suspended)</option>
+                                        </optgroup>
+                                        <optgroup label="Rakhine & Kachin (Restricted)">
+                                            <option value="city-hard" disabled>Sittwe (Svc Suspended)</option>
+                                            <option value="city-hard" disabled>Myitkyina (Svc Suspended)</option>
+                                            <option value="city-hard" disabled>Bhamo (Svc Suspended)</option>
+                                        </optgroup>
+                                        <optgroup label="Mon & Kayin State">
+                                            <option value="city-easy">Mawlamyine</option>
+                                            <option value="city-med">Hpa-An</option>
+                                            <option value="city-med">Mudon / Ye</option>
+                                        </optgroup>
+                                        <optgroup label="Magway & Sagaing Region">
+                                            <option value="city-easy">Magway City</option>
+                                            <option value="city-med">Pakokku</option>
+                                            <option value="city-easy">Monywa</option>
+                                            <option value="city-med">Shwebo</option>
+                                        </optgroup>
+                                    </select>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Method Selection Cards (Dynamic) -->
+                                <div class="mb-4">
+                                    <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px;">Delivery Method</label>
+                                    <div class="row g-2" id="method-container">
+                                        <!-- Will be filled by JS -->
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px;">Full Address</label>
+                                    <textarea class="form-control" id="delivery-address" rows="2" placeholder="Street name, Home number..." style="font-size: 13px; border-radius: 12px; border: 1.5px solid rgba(0,0,0,0.06); background: rgba(0,0,0,0.02); resize: none; transition: all 0.2s;"></textarea>
+                                </div>
+                            </div>
+
+                            <hr class="ct-summary-divider mt-4">
+
                             <div class="ct-summary-row">
                                 <span>Subtotal (<?= $cartCount ?> items)</span>
                                 <span class="val" id="subtotal"><?= number_format($cartTotal) ?> Ks</span>
                             </div>
                             <div class="ct-summary-row">
-                                <span>Shipping</span>
-                                <span class="val" style="color:#10b981;">FREE</span>
+                                <span style="display: flex; align-items:center; gap:6px;">Shipping <i class="fas fa-info-circle text-muted" title="Free standard delivery for Yangon when ordering 5+ books" style="font-size:11px; cursor:help;"></i></span>
+                                <span class="val" id="shipping-cost">1,500 Ks</span>
                             </div>
                             <div class="ct-summary-row">
                                 <span>Tax</span>
                                 <span class="val">0 Ks</span>
                             </div>
-
-                            <hr class="ct-summary-divider">
 
                             <div class="ct-summary-total">
                                 <span>Total</span>
@@ -394,8 +554,8 @@ include 'views/header.php';
                                 </div>
                             </div>
 
-                            <button class="ct-checkout-btn" onclick="proceedToCheckout()">
-                                <i class="fas fa-lock"></i> Proceed to Checkout
+                            <button class="ct-checkout-btn" onclick="placeOrder()">
+                                <i class="fas fa-shopping-bag"></i> Place Order
                             </button>
 
                             <div class="ct-secure">
@@ -410,6 +570,131 @@ include 'views/header.php';
 </div>
 
 <script>
+const cartTotal = <?= (int)$cartTotal ?>;
+const cartCount = <?= (int)$cartCount ?>;
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    updateShippingCost();
+});
+
+function updateShippingCost() {
+    const locationSelect = document.getElementById('delivery-location');
+    const location = locationSelect.value;
+    const shippingEl = document.getElementById('shipping-cost');
+    const totalEl = document.getElementById('total');
+    const zoneLabel = document.getElementById('zone-label');
+    const methodContainer = document.getElementById('method-container');
+    
+    // Check digital only
+    const isDigitalOnly = <?= $cartTotal > 0 ? 'false' : 'true' ?>; // Simple check for demo purposes
+    // Better: let the PHP count physical items.
+    
+    // Update methods UI based on location
+    const currentMethod = document.querySelector('input[name="delivery-method"]:checked')?.value || 'std';
+    let methodsHTML = '';
+    
+    if (location.includes('ygn')) {
+        methodsHTML = `
+            <div class="col-6">
+                <input type="radio" class="btn-check" name="delivery-method" id="m-std" value="std" ${currentMethod==='std' || currentMethod==='courier' ? 'checked' : ''} onchange="updateShippingCost()">
+                <label class="btn btn-outline-premium w-100" for="m-std">
+                    <i class="fas fa-home d-block mb-1"></i>
+                    <span class="d-block" style="font-size:12px; font-weight:700;">Door + COD</span>
+                    <small style="font-size:9px; opacity:0.7;">1-2 Days</small>
+                </label>
+            </div>
+            <div class="col-6">
+                <input type="radio" class="btn-check" name="delivery-method" id="m-exp" value="exp" ${currentMethod==='exp' || currentMethod==='bus' ? 'checked' : ''} onchange="updateShippingCost()">
+                <label class="btn btn-outline-premium w-100" for="m-exp">
+                    <i class="fas fa-bolt d-block mb-1"></i>
+                    <span class="d-block" style="font-size:12px; font-weight:700;">Express</span>
+                    <small style="font-size:9px; opacity:0.7;">Today/Next</small>
+                </label>
+            </div>
+        `;
+    } else if (location === 'city-easy') {
+        methodsHTML = `
+            <div class="col-12">
+                <input type="radio" class="btn-check" name="delivery-method" id="m-courier" value="courier" checked onchange="updateShippingCost()">
+                <label class="btn btn-outline-premium w-100" for="m-courier">
+                    <i class="fas fa-shipping-fast d-block mb-1"></i>
+                    <span class="d-block" style="font-size:12px; font-weight:700;">Courier Delivery</span>
+                    <small style="font-size:9px; opacity:0.7;">City & Main Road Areas</small>
+                </label>
+            </div>
+        `;
+    } else {
+        methodsHTML = `
+            <div class="col-6">
+                <input type="radio" class="btn-check" name="delivery-method" id="m-bus" value="bus" ${currentMethod==='std' || currentMethod==='bus' || currentMethod==='courier' ? 'checked' : ''} onchange="updateShippingCost()">
+                <label class="btn btn-outline-premium w-100" for="m-bus">
+                    <i class="fas fa-bus d-block mb-1"></i>
+                    <span class="d-block" style="font-size:12px; font-weight:700;">Bus Gate</span>
+                    <small style="font-size:9px; opacity:0.7;">Township Gate</small>
+                </label>
+            </div>
+            <div class="col-6">
+                <input type="radio" class="btn-check" name="delivery-method" id="m-post" value="post" ${currentMethod==='exp' || currentMethod==='post' ? 'checked' : ''} onchange="updateShippingCost()">
+                <label class="btn btn-outline-premium w-100" for="m-post">
+                    <i class="fas fa-envelope d-block mb-1"></i>
+                    <span class="d-block" style="font-size:12px; font-weight:700;">Myanma Post</span>
+                    <small style="font-size:9px; opacity:0.7;">Home Delivery</small>
+                </label>
+            </div>
+        `;
+    }
+    
+    // Only update if different
+    if (methodContainer.innerHTML !== methodsHTML) {
+        methodContainer.innerHTML = methodsHTML;
+    }
+
+    const method = document.querySelector('input[name="delivery-method"]:checked').value;
+    
+    // Update zone label for user
+    const selectedText = locationSelect.options[locationSelect.selectedIndex].parentNode.label;
+    if (selectedText) zoneLabel.innerText = selectedText.split(' (')[0];
+    else if(location === 'mandalay') zoneLabel.innerText = "Mandalay & Cities";
+    else zoneLabel.innerText = "Small Towns";
+
+    let base = 0;
+    
+    // Tiered Base Calculation
+    switch(location) {
+        case 'ygn-inner':   base = 1500; break;
+        case 'ygn-outer':   base = 2000; break;
+        case 'ygn-distant': base = 3000; break;
+        case 'city-easy':   base = 4000; break;
+        case 'city-med':    base = 4500; break;
+        case 'city-hard':   base = 5000; break;
+    }
+    
+    // Method Multiplier/Addition
+    let cost = base;
+    if (method === 'exp') {
+        cost += 1500; // Express surcharge
+    }
+    
+    // Free Shipping Rule (Standard/COD/Bus is free over 5 books for Yangon only, Express gets 1.5k discount)
+    if (cartCount >= 5 && location.includes('ygn')) {
+        if (method === 'std') {
+            cost = 0;
+        } else if (method === 'exp') {
+            cost -= 1500; 
+        }
+    }
+    
+    // Update Display
+    if (cost === 0) {
+        shippingEl.innerHTML = '<span style="color:#10b981; font-weight:800;">FREE</span>';
+    } else {
+        shippingEl.innerText = cost.toLocaleString() + " Ks";
+    }
+    
+    totalEl.innerText = (cartTotal + cost).toLocaleString() + " Ks";
+}
+
 function updateQuantity(cartId, quantity) {
     quantity = parseInt(quantity);
     if (quantity < 1) { removeItem(cartId); return; }
@@ -455,8 +740,65 @@ function removeItem(cartId) {
     });
 }
 
-function proceedToCheckout() {
-    window.location.href = 'checkout.php';
+function placeOrder() {
+    const locationSelect = document.getElementById('delivery-location');
+    const location = locationSelect.options[locationSelect.selectedIndex].text;
+    const methodInput = document.querySelector('input[name="delivery-method"]:checked');
+    const methodLine = methodInput.nextElementSibling.querySelector('span').innerText;
+    const address = document.getElementById('delivery-address').value;
+    const shippingText = document.getElementById('shipping-cost').innerText;
+    
+    if (!address.trim()) {
+        Swal.fire({ icon:'warning', title:'Required', text:'Please enter your delivery address', confirmButtonColor:'#E07A5F' });
+        return;
+    }
+
+    // Parse shipping cost
+    let shippingCost = 0;
+    if (shippingText !== 'FREE') {
+        shippingCost = parseInt(shippingText.replace(/[^0-9]/g, ''));
+    }
+
+    const btn = event.currentTarget;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Placing Order...';
+
+    fetch('api/place_order.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            shipping_cost: shippingCost,
+            delivery_location: location,
+            delivery_method: methodLine,
+            shipping_address: address,
+            payment_method: 'Cash on Delivery'
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire({
+                icon:'success',
+                title:'Success!',
+                text:'Your order has been placed successfully.',
+                confirmButtonColor:'#E07A5F',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                window.location.href = 'order-details.php?id=' + data.order_number;
+            });
+        } else {
+            Swal.fire({ icon:'error', title:'Error', text: data.message, confirmButtonColor:'#E07A5F' });
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    })
+    .catch(() => {
+        Swal.fire({ icon:'error', title:'Error', text:'Failed to place order', confirmButtonColor:'#E07A5F' });
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
 }
 </script>
 

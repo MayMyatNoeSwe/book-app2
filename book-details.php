@@ -473,7 +473,7 @@ include 'views/header.php';
                 <?php elseif ($book->isAvailable()): ?>
                     <span class="bd-cover-badge available"><i class="fas fa-check me-1"></i>Available</span>
                 <?php else: ?>
-                    <span class="bd-cover-badge borrowed"><i class="fas fa-clock me-1"></i>Borrowed</span>
+                    <span class="bd-cover-badge borrowed" style="background:rgba(239,68,68,0.95);"><i class="fas fa-exclamation-circle me-1"></i>Out of Stock</span>
                 <?php endif; ?>
             </div>
 
@@ -536,8 +536,8 @@ include 'views/header.php';
 
                 <!-- Action Buttons -->
                 <div class="bd-actions">
-                    <?php if (Auth::check()): ?>
-                        <?php if ($isEbook): ?>
+                    <?php if ($isEbook): ?>
+                        <?php if (Auth::check()): ?>
                             <?php if ($book->getDownloadLink()): ?>
                                 <a href="<?= e($book->getDownloadLink()) ?>" target="_blank" class="bd-btn bd-btn-primary">
                                     <i class="fas fa-download"></i> Download PDF
@@ -546,33 +546,59 @@ include 'views/header.php';
                                 <button class="bd-btn bd-btn-outline" disabled><i class="fas fa-times"></i> No Download</button>
                             <?php endif; ?>
                         <?php else: ?>
-                            <?php if ($isCurrentlyBorrowing): ?>
+                            <a href="login.php" class="bd-btn bd-btn-primary">
+                                <i class="fas fa-sign-in-alt"></i> Login to Download
+                            </a>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                            <?php if (Auth::check() && $isCurrentlyBorrowing): ?>
                                 <button class="bd-btn bd-btn-success" disabled><i class="fas fa-book-reader"></i> Currently Reading</button>
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="action" value="return">
                                     <button type="submit" class="bd-btn bd-btn-danger-outline"><i class="fas fa-undo"></i> Return</button>
                                 </form>
                             <?php elseif ($book->isAvailable()): ?>
-                                <button type="button" class="bd-btn bd-btn-primary" data-bs-toggle="modal" data-bs-target="#borrowConfirmModal">
-                                    <i class="fas fa-book"></i> Borrow Now
-                                </button>
-                                <button onclick="addToCart('<?= e($bookId) ?>')" class="bd-btn bd-btn-outline"><i class="fas fa-shopping-cart"></i> Add to Cart</button>
+                                <?php if (Auth::check()): ?>
+                                    <button type="button" class="bd-btn bd-btn-primary" data-bs-toggle="modal" data-bs-target="#borrowConfirmModal">
+                                        <i class="fas fa-book"></i> Borrow Now
+                                    </button>
+                                <?php else: ?>
+                                    <a href="login.php" class="bd-btn bd-btn-primary">
+                                        <i class="fas fa-sign-in-alt"></i> Login to Borrow
+                                    </a>
+                                <?php endif; ?>
                             <?php else: ?>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="action" value="reserve">
-                                    <button type="submit" class="bd-btn bd-btn-outline"><i class="fas fa-bookmark"></i> Reserve</button>
-                                </form>
+                                <?php if (Auth::check()): ?>
+                                    <form method="POST" style="display:inline;">
+                                        <input type="hidden" name="action" value="reserve">
+                                        <button type="submit" class="bd-btn bd-btn-outline" title="Notify me when available">
+                                            <i class="fas fa-bookmark"></i> Reserve
+                                        </button>
+                                    </form>
+                                <?php else: ?>
+                                    <a href="login.php" class="bd-btn bd-btn-outline" style="text-decoration:none;">
+                                        <i class="fas fa-sign-in-alt"></i> Login to Borrow
+                                    </a>
+                                <?php endif; ?>
                             <?php endif; ?>
-                        <?php endif; ?>
-                        <?php if (Auth::check()): ?>
-                            <button class="bd-btn bd-btn-outline" data-bs-toggle="modal" data-bs-target="#reviewModal">
-                                <i class="fas fa-star"></i> Review
-                            </button>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <a href="login.php" class="bd-btn bd-btn-primary">
-                            <i class="fas fa-sign-in-alt"></i> <?= $isEbook ? 'Login to Download' : 'Login to Borrow' ?>
-                        </a>
+
+                            <?php if ($book->isAvailable()): ?>
+                                <button onclick="addToCart('<?= e($bookId) ?>')" class="bd-btn bd-btn-outline">
+                                    <i class="fas fa-shopping-cart"></i> Add to Cart
+                                </button>
+                            <?php else: ?>
+                                <button onclick="addToCart('<?= e($bookId) ?>')" class="bd-btn bd-btn-primary" style="background:#524f7d; border:none; box-shadow:0 8px 15px rgba(82,79,125,0.2);">
+                                    <i class="fas fa-calendar-check"></i> Pre-order
+                                </button>
+                            <?php endif; ?>
+
+                            <?php if (Auth::check()): ?>
+                                <button class="bd-btn bd-btn-outline" data-bs-toggle="modal" data-bs-target="#reviewModal">
+                                    <i class="fas fa-star"></i> Review
+                                </button>
+                            <?php endif; ?>
+                        </div>
                     <?php endif; ?>
                 </div>
 

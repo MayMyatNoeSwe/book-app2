@@ -43,11 +43,17 @@ try {
 
     $result = $cart->addItem($userId, $bookId, $quantity);
     
+    // Check availability for message
+    $stmt = $pdo->prepare("SELECT available_copies FROM books WHERE id = ?");
+    $stmt->execute([$bookId]);
+    $availableCopies = $stmt->fetchColumn();
+    $isPreorder = ($availableCopies <= 0);
+
     if ($result) {
         $cartCount = $cart->getCount($userId);
         echo json_encode([
             'success' => true,
-            'message' => 'Book added to cart!',
+            'message' => $isPreorder ? 'Pre-order added to cart!' : 'Book added to cart!',
             'cart_count' => $cartCount
         ]);
     } else {

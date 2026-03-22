@@ -335,7 +335,7 @@ include 'views/header.php';
                 </div>
 
                 <!-- Recent Orders -->
-                <h3 class="ud-section-title"><i class="fas fa-box-open"></i> Recent Orders</h3>
+                <h3 class="ud-section-title" id="orders-section"><i class="fas fa-box-open"></i> Recent Orders</h3>
                 <div class="ud-card">
                     <?php if (empty($orders)): ?>
                         <div class="ud-empty">
@@ -347,16 +347,19 @@ include 'views/header.php';
                         <?php foreach ($orders as $order): ?>
                         <div class="ud-list-item">
                             <div class="ud-item-info">
-                                <div class="ud-item-title">Order #<?= e($order['order_number']) ?></div>
+                                <div class="ud-item-title"><a href="order-details.php?id=<?= e($order['order_number']) ?>" class="text-decoration-none" style="color:inherit;">Order #<?= e($order['order_number']) ?></a></div>
                                 <div class="ud-item-meta"><?= date('M j, Y', strtotime($order['created_at'])) ?></div>
                             </div>
                             <div class="text-end">
                                 <div style="font-weight:800; color:var(--bookhouse-text); margin-bottom:4px;">
-                                    $<?= number_format($order['total_amount'], 2) ?>
+                                    <?= number_format($order['total_amount']) ?> Ks
                                 </div>
                                 <span class="ud-status <?= strtolower($order['status']) ?>">
                                     <?= ucfirst($order['status']) ?>
                                 </span>
+                                <div class="mt-1">
+                                    <a href="order-details.php?id=<?= e($order['order_number']) ?>" style="font-size:11px; color:var(--bookhouse-orange); font-weight:700; text-decoration:none;">View Details</a>
+                                </div>
                             </div>
                         </div>
                         <?php endforeach; ?>

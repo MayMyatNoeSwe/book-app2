@@ -97,12 +97,9 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
                                 <td class="px-4 py-3 fw-bold text-muted small">#<?= substr($book->getId(), -4) ?></td>
                                 <td class="px-4 py-3">
                                     <div class="d-flex align-items-center gap-3">
-                                        <div class="book-cover-mini rounded shadow-sm overflow-hidden d-flex align-items-center justify-content-center" style="width: 45px; height: 65px; background: rgba(0,0,0,0.1);">
-                                            <?php if ($book->getCoverImage()): ?>
-                                                <img src="<?= baseUrl() ?>/public/uploads/covers/<?= e($book->getCoverImage()) ?>" class="w-100 h-100 object-fit-cover">
-                                            <?php else: ?>
-                                                <i class="fas fa-book-open text-muted opacity-25"></i>
-                                            <?php endif; ?>
+                                        <div class="book-cover-mini rounded shadow-sm overflow-hidden d-flex align-items-center justify-content-center" style="width: 45px; height: 65px; background: rgba(0,0,0,0.05);">
+                                            <img src="<?= getBookCoverUrl($book) ?>" class="w-100 h-100 object-fit-cover" 
+                                                 onerror="this.src='<?= getDummyBookCover($book->getTitle(), $book->getAuthor(), 45, 65) ?>'">
                                         </div>
                                         <div class="book-meta-info">
                                             <h6 class="mb-0 fw-bold text-dark"><?= e($book->getTitle()) ?></h6>

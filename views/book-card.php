@@ -41,67 +41,89 @@ $showBorrow = $showBorrow ?? Auth::check();
                     <small class="text-muted"><?= $book->getAvailableCopies() ?> of <?= $book->getTotalCopies() ?>
                         copies</small>
                     <?php else: ?>
-                    <span class="text-danger fw-bold fs-5">Not Available</span><br>
-                    <small class="text-muted">All copies borrowed</small>
+                    <span class="text-danger fw-bold fs-5">Out of Stock</span><br>
+                    <small class="text-muted">Available for Pre-order</small>
                     <?php endif; ?>
                 </p>
-
+                
                 <!-- Action Buttons -->
                 <?php if (Auth::check()): ?>
                 <?php if ($book instanceof \App\EBook): ?>
-                <?php if ($book->getDownloadLink()): ?>
-                <a href="<?= e($book->getDownloadLink()) ?>" target="_blank" class="btn btn-primary w-100 fw-bold">
-                    📥 Download PDF
-                </a>
+                    <?php if ($book->getDownloadLink()): ?>
+                    <a href="<?= e($book->getDownloadLink()) ?>" target="_blank" class="btn btn-primary w-100 fw-bold">
+                        📥 Download PDF
+                    </a>
+                    <?php else: ?>
+                    <button class="btn btn-secondary w-100" disabled>No Link Available</button>
+                    <?php endif; ?>
                 <?php else: ?>
-                <button class="btn btn-secondary w-100" disabled>No Link Available</button>
-                <?php endif; ?>
-                <?php else: ?>
-                <?php 
-                        // We need a library instance to check borrowing status
-                        // Make sure $library is available in API context
-                        if (!isset($library)) {
-                            $library = new \App\Library();
-                        }
-                        $isBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $book->getId()); 
-                        ?>
+                    <?php 
+                    if (!isset($library)) {
+                        $library = new \App\Library();
+                    }
+                    $isBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $book->getId()); 
+                    ?>
 
-                <?php if ($isBorrowing): ?>
-                <button class="btn btn-secondary w-100 mb-2" disabled>
-                    📖 You have this
-                </button>
-                <form method="POST" action="book-details.php">
-                    <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
-                    <input type="hidden" name="action" value="return">
-                    <button type="submit" class="btn btn-sm btn-outline-danger w-100">
-                        Return Now
+                    <?php if ($isBorrowing): ?>
+                    <button class="btn btn-secondary w-100 mb-2" disabled>
+                        📖 Currently Reading
                     </button>
-                </form>
-                <?php elseif ($book->isAvailable()): ?>
-                <!-- Borrow Form -->
-                <form method="POST" action="book-details.php">
-                    <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
-                    <input type="hidden" name="action" value="borrow">
-                    <button type="submit" class="btn btn-primary w-100 fw-bold">
-                        Borrow Now
+                    <form method="POST" action="book-details.php">
+                        <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
+                        <input type="hidden" name="action" value="return">
+                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                            Return Now
+                        </button>
+                    </form>
+                    <?php elseif ($book->isAvailable()): ?>
+                    <!-- Borrow Form -->
+                    <form method="POST" action="book-details.php">
+                        <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
+                        <input type="hidden" name="action" value="borrow">
+                        <button type="submit" class="btn btn-primary w-100 fw-bold mb-2">
+                            Borrow Now
+                        </button>
+                    </form>
+                    <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-outline-primary w-100 btn-sm fw-bold">
+                        <i class="fas fa-shopping-cart me-1"></i> Add to Cart
                     </button>
-                </form>
-                <?php else: ?>
-                <!-- Reserve Form -->
-                <form method="POST" action="book-details.php">
-                    <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
-                    <input type="hidden" name="action" value="reserve">
-                    <button type="submit" class="btn btn-outline-info w-100">
-                        Reserve / Join Waitlist
+                    <?php else: ?>
+                    <!-- Reserve & Pre-order -->
+                    <form method="POST" action="book-details.php" class="mb-2">
+                        <input type="hidden" name="id" value="<?= e($book->getId()) ?>">
+                        <input type="hidden" name="action" value="reserve">
+                        <button type="submit" class="btn btn-outline-info w-100 fw-bold">
+                            Reserve Now
+                        </button>
+                    </form>
+                    <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-primary w-100 fw-bold" style="background:#524f7d; border-color:#524f7d;">
+                        <i class="fas fa-calendar-check me-1"></i> Pre-order
                     </button>
-                </form>
-                <?php endif ?>
+                    <?php endif ?>
                 <?php endif ?>
                 <?php else: ?>
                 <!-- Guest User -->
-                <a href="login.php" class="btn btn-primary w-100 fw-bold">
-                    <?= ($book instanceof \App\EBook) ? 'Login to Download' : 'Login to Borrow' ?>
-                </a>
+                <div class="guest-actions">
+                    <?php if ($book instanceof \App\EBook): ?>
+                        <a href="login.php" class="btn btn-primary w-100 fw-bold">
+                            <i class="fas fa-sign-in-alt me-1"></i> Login to Download
+                        </a>
+                    <?php elseif ($book->isAvailable()): ?>
+                        <a href="login.php" class="btn btn-primary w-100 fw-bold mb-2">
+                            <i class="fas fa-book me-1"></i> Login to Borrow
+                        </a>
+                        <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-outline-primary w-100 btn-sm fw-bold">
+                            <i class="fas fa-shopping-cart me-1"></i> Add to Cart
+                        </button>
+                    <?php else: ?>
+                        <a href="login.php" class="btn btn-outline-info w-100 fw-bold mb-2">
+                            <i class="fas fa-sign-in-alt me-1"></i> Login to Borrow
+                        </a>
+                        <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-primary w-100 fw-bold" style="background:#524f7d; border-color:#524f7d;">
+                            <i class="fas fa-calendar-check me-1"></i> Pre-order
+                        </button>
+                    <?php endif ?>
+                </div>
                 <?php endif ?>
 
                 <!-- Always Show Details Link -->
