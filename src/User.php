@@ -12,9 +12,19 @@ class User
     private ?string $email = null;
     private ?string $password = null;
     private ?string $role = null;
-    public function __construct(\PDO $pdo)
+    public function __construct(?\PDO $pdo = null)
     {
-        $this->pdo = $pdo;
+        if ($pdo) {
+            $this->pdo = $pdo;
+        } else {
+            $config = include __DIR__ . '/../config/database.php';
+            $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
+            try {
+                $this->pdo = new \PDO($dsn, $config['username'], $config['password'], $config['options']);
+            } catch (\PDOException $e) {
+                die("Database connection failed: " . $e->getMessage());
+            }
+        }
     }
     public function login(string $usernameOrEmail, string $password): bool
     {
@@ -45,13 +55,13 @@ class User
 
     public function getAllUsers(): array
     {
-        $stmt = $this->pdo->query("SELECT id, username, email, role FROM users ORDER BY username ASC");
+        $stmt = $this->pdo->query("SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC");
         return $stmt->fetchAll();
     }
 
     public function getUserById(int $id): ?array
     {
-        $stmt = $this->pdo->prepare("SELECT id, username, email, role FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT id, username, email, role, created_at FROM users WHERE id = ?");
         $stmt->execute([$id]);
         $user = $stmt->fetch();
         return $user ?: null;
@@ -65,13 +75,9 @@ class User
 
     public function deleteUser(int $id): bool
     {
-        // Don't allow deleting the last admin or yourself
-        if ($id === self::getCurrentUserId()) return false;
-        
         $stmt = $this->pdo->prepare("DELETE FROM users WHERE id = ?");
         return $stmt->execute([$id]);
     }
-
     public static function isLoggedIn(): bool
     {
         return isset($_SESSION['user_id']);

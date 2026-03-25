@@ -86,51 +86,99 @@ $offset = ($page - 1) * $limit;
 $books = $library->getBooksPaginated($limit, $offset);
 $totalBooks = $library->countBooks();
 
-renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
+// Fetch real data for stats
+$pdo = $library->getPdo();
+
+// Categories Count
+$stmt = $pdo->query("SELECT COUNT(DISTINCT category) FROM books");
+$totalCategories = $stmt->fetchColumn();
+
+// Status Counts
+$stmt = $pdo->query("SELECT COUNT(*) FROM books WHERE available_copies > 0");
+$availableBooksCount = $stmt->fetchColumn();
+
+$stmt = $pdo->query("SELECT COUNT(*) FROM books WHERE available_copies = 0");
+$outOfStockCount = $stmt->fetchColumn();
+
+renderAdminLayout('Manage Books', function() use ($books, $totalBooks, $totalCategories, $availableBooksCount, $outOfStockCount) {
     ?>
-    <section class="admin-book-list">
-        <div class="row g-4 align-items-center mb-4">
-            <div class="col-lg-8">
-                <div class="input-group input-group-lg border-0 shadow-sm rounded-4 overflow-hidden bg-white px-3 py-1">
-                    <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted opacity-50"></i></span>
-                    <input type="text" class="form-control border-0 shadow-none ps-1 fs-6" placeholder="Quickly search by title, author, or ISBN identifier...">
-                    <button class="btn btn-soft-primary rounded-pill px-4 ms-2 fw-bold btn-sm my-1" type="button">Apply Filter</button>
+    <section class="premium-hero mb-5 rounded-5 overflow-hidden position-relative p-5 border border-light-subtle shadow-sm bg-lightest">
+        <div class="hero-pattern position-absolute top-0 start-0 w-100 h-100 opacity-5" style="background-image: radial-gradient(#4e73df 1px, transparent 1px); background-size: 30px 30px; z-index: 2;"></div>
+        
+        <div class="position-relative" style="z-index: 3;">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h3 class="text-dark fw-800 mb-2">Book Inventory Catalog</h3>
+                    <p class="text-muted mb-4 fs-6 fw-500">Analyze your global collection, monitor real-time availability, and optimize stock efficiency from a centralized command center.</p>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm py-2" data-bs-toggle="modal" data-bs-target="#bookModal">
+                            <i class="fas fa-plus-circle me-2"></i>New Catalog Entry
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="col-lg-4 text-lg-end">
-                <button class="btn btn-primary rounded-pill px-5 py-2 shadow-primary d-flex align-items-center gap-2 justify-content-center w-100 w-lg-auto" data-bs-toggle="modal" data-bs-target="#bookModal" onclick="resetForm()">
-                    <i class="fas fa-plus-circle"></i>
-                    <span class="fw-bold">Add New Book</span>
-                </button>
+                <div class="col-lg-4 d-none d-lg-block text-end">
+                    <div class="bg-white rounded-circle shadow-sm d-inline-flex align-items-center justify-content-center" style="width: 140px; height: 140px;">
+                        <i class="fas fa-book-sparkles text-primary" style="font-size: 3.5rem;"></i>
+                    </div>
+                </div>
             </div>
         </div>
+    </section>
 
-        <div class="card card-admin border-0 shadow-sm overflow-hidden">
-            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 fw-bold text-dark">Book Inventory List</h6>
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-light border rounded" data-bs-toggle="dropdown">
-                        Actions <i class="fas fa-chevron-down ms-1 small"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-file-export me-2 text-muted"></i>Export CSV</a></li>
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-print me-2 text-muted"></i>Print Report</a></li>
-                    </ul>
+    <section class="inventory-stats mb-5">
+        <div class="row g-4 text-center">
+            <div class="col-xl-3 col-md-6">
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+...
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+...
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+...
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+                    <div class="card-body p-4 position-relative">
+                        <div class="stat-icon-premium bg-danger-soft text-danger shadow-sm mb-3 mx-auto">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <h3 class="fw-800 mb-1 text-dark"><?= $outOfStockCount ?></h3>
+                        <p class="text-muted small text-uppercase fw-bold mb-0">OUT OF STOCK</p>
+                    </div>
                 </div>
             </div>
-            <div class="card-body p-0">
-                <div class="table-responsive p-0">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-lightest text-muted text-uppercase small" style="letter-spacing: 0.05rem;">
-                            <tr>
-                                <th class="py-3 px-4 border-0">ID</th>
-                                <th class="py-3 px-4 border-0">Book Details</th>
-                                <th class="py-3 px-4 border-0">Category</th>
-                                <th class="py-3 px-4 border-0 text-center">Price</th>
-                                <th class="py-3 px-4 border-0 text-center">Status</th>
-                                <th class="py-3 px-4 border-0 text-end">Actions</th>
-                            </tr>
-                        </thead>
+        </div>
+    </section>
+
+    <div class="row g-4 align-items-center mb-4">
+        <div class="col-lg-12">
+            <div class="input-group input-group-lg border-0 shadow-sm rounded-4 overflow-hidden bg-white px-3 py-1">
+                <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted opacity-50"></i></span>
+                <input type="text" class="form-control border-0 shadow-none ps-1 fs-6" placeholder="Execute Deep search across titles, authors, and classification metadata...">
+                <button class="btn btn-soft-primary rounded-pill px-4 ms-2 fw-bold btn-sm my-1" type="button">Apply Filter</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card-admin border-0 shadow-sm overflow-hidden">
+        <div class="card-header bg-white py-4 border-0 d-flex justify-content-between align-items-center px-4">
+            <div>
+                <h5 class="mb-0 fw-800 text-dark">Library Inventory</h5>
+                <p class="text-muted smallest fw-bold mb-0 text-uppercase tracking-wider">SECURE CATALOG REGISTRY</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-white border border-light-subtle rounded-pill btn-sm px-4 fw-bold text-muted small"><i class="fas fa-file-csv me-2 text-success"></i>Export</button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr class="bg-lightest border-bottom">
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Book Identity</th>
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Classification</th>
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider text-center">Valuation</th>
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider text-center">Availability</th>
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider text-end">Control</th>
+                        </tr>
+                    </thead>
                         <tbody class="border-top-0">
                             <?php foreach ($books as $book): ?>
                             <tr>
@@ -551,14 +599,15 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
         const uploadUI = document.getElementById('uploadUI');
         const removeBtn = document.getElementById('removeCoverBtn');
 
-        // Add New Book clicked (from layout button)
-        document.querySelector('[data-bs-target="#addBookModal"]').setAttribute('data-bs-target', '#bookModal');
-        document.querySelector('[data-bs-target="#bookModal"]').addEventListener('click', function() {
-            bookForm.reset();
-            bookId.value = '';
-            bookModalTitle.textContent = 'Add New Book to Collection';
-            bookSubmitBtn.textContent = 'Add Book';
-            resetPreview();
+        // Add New Book clicked
+        document.querySelectorAll('[data-bs-target="#bookModal"]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                bookForm.reset();
+                bookId.value = '';
+                bookModalTitle.textContent = 'Add New Book to Collection';
+                bookSubmitBtn.textContent = 'Add Book';
+                resetPreview();
+            });
         });
 
         // Edit Book clicked
