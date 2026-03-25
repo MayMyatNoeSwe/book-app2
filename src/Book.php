@@ -102,10 +102,38 @@ class Book
     }
     public function setTotalCopies(int $total): void
     {
+        $oldTotal = $this->totalCopies;
         $this->totalCopies = max(1, $total);
-        if ($this->availableCopies > $this->totalCopies) {
-            $this->availableCopies = $this->totalCopies;
+        $diff = $this->totalCopies - $oldTotal;
+        
+        // If we added copies, they should be available
+        if ($diff > 0) {
+            $this->availableCopies += $diff;
+        } 
+        // If we removed copies, adjust available copies but not below 0
+        else if ($diff < 0) {
+            $this->availableCopies = max(0, $this->availableCopies + $diff);
         }
+    }
+    public function setTitle(string $title): void
+    {
+        $this->title = trim($title);
+    }
+    public function setAuthor(string $author): void
+    {
+        $this->author = trim($author);
+    }
+    public function setYear(int $year): void
+    {
+        $this->year = $year;
+    }
+    public function setPrice(int $price): void
+    {
+        $this->price = $price;
+    }
+    public function setBorrowPrice(int $borrowPrice): void
+    {
+        $this->borrowPrice = $borrowPrice;
     }
     // ======================== Inventory Actions =======================
     public function borrowCopy(): bool

@@ -1,140 +1,280 @@
 <?php
-// admin/dashboard.php
+// admin/index.php
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 require_once dirname(__DIR__) . '/includes/sessions.php';
 require_once dirname(__DIR__) . '/includes/env_loader.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/views/admin/layout.php';
 
-// Mock data for dashboard (normally you would fetch this from DB)
+// Mock data for dashboard
 $stats = [
     'total_books' => 1250,
     'total_users' => 450,
     'total_borrowed' => 85,
-    'monthly_revenue' => 3450.50
+    'monthly_revenue' => 3450500 // In KS
 ];
 
 $recent_activities = [
-    ['user' => 'John Doe', 'action' => 'borrowed "The Great Gatsby"', 'time' => '2 hours ago'],
-    ['user' => 'Jane Smith', 'action' => 'registered as new member', 'time' => '5 hours ago'],
-    ['user' => 'System', 'action' => 'database backup completed', 'time' => '1 day ago'],
-    ['user' => 'Mike Johnson', 'action' => 'reviewed "1984" - 5 stars', 'time' => '2 days ago'],
+    ['user' => 'John Doe', 'action' => 'borrowed "The Great Gatsby"', 'time' => '2 hours ago', 'type' => 'borrow'],
+    ['user' => 'Jane Smith', 'action' => 'registered as new member', 'time' => '5 hours ago', 'type' => 'user'],
+    ['user' => 'System', 'action' => 'database backup completed', 'time' => '1 day ago', 'type' => 'system'],
+    ['user' => 'Mike Johnson', 'action' => 'reviewed "1984" - 5 stars', 'time' => '2 days ago', 'type' => 'star'],
 ];
 
-renderAdminLayout('System Overview', function() use ($stats, $recent_activities) {
+renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activities) {
     ?>
+    <section class="premium-hero mb-4 rounded-5 overflow-hidden position-relative p-5 shadow-lg">
+        <div class="hero-bg position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%); z-index: 1;"></div>
+        <div class="hero-pattern position-absolute top-0 start-0 w-100 h-100 opacity-10" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 20px 20px; z-index: 2;"></div>
+        
+        <div class="position-relative" style="z-index: 3;">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h2 class="text-white fw-800 display-6 mb-2">Welcome back, <?= e($_SESSION['user_name'] ?? 'Admin') ?>!</h2>
+                    <p class="text-white opacity-75 mb-4 fs-5">Your library is growing faster than ever. Here's what has happened since your last visit.</p>
+                    <div class="d-flex gap-3">
+                        <a href="<?= baseUrl() ?>/admin/books.php" class="btn btn-white rounded-pill px-4 fw-bold shadow-sm">Manage Collection</a>
+                        <button class="btn btn-outline-white rounded-pill px-4 fw-bold">Generate Report</button>
+                    </div>
+                </div>
+                <div class="col-lg-4 d-none d-lg-block text-end">
+                    <i class="fas fa-chart-line text-white opacity-25" style="font-size: 10rem;"></i>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section class="dashboard-stats mb-5">
         <div class="row g-4">
             <!-- Total Books Stat -->
             <div class="col-xl-3 col-md-6">
-                <div class="card card-admin p-3 border-start border-primary border-4">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div class="stat-content">
-                            <p class="text-xs font-weight-bold text-primary text-uppercase mb-1 small fw-bold">Books in Library</p>
-                            <h3 class="h2 mb-0 fw-bold"><?= number_format($stats['total_books']) ?></h3>
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div class="card-body p-4 position-relative">
+                        <div class="stat-glow bg-primary"></div>
+                        <div class="d-flex justify-content-between mb-3 align-items-start position-relative">
+                            <div class="stat-icon-premium bg-primary-soft text-primary shadow-sm">
+                                <i class="fas fa-book"></i>
+                            </div>
+                            <span class="badge bg-success-soft text-success rounded-pill px-2 py-1 smallest h6 mb-0">+12% <i class="fas fa-arrow-up px-1 small"></i></span>
                         </div>
-                        <div class="stat-icon bg-primary-soft">
-                            <i class="fas fa-book-open fa-2x"></i>
-                        </div>
+                        <h3 class="fw-800 display-6 mb-1"><?= number_format($stats['total_books']) ?></h3>
+                        <p class="text-muted small text-uppercase fw-bold letter-spacing-1 mb-0">Total Documents</p>
                     </div>
                 </div>
             </div>
 
             <!-- Total Users Stat -->
             <div class="col-xl-3 col-md-6">
-                <div class="card card-admin p-3 border-start border-success border-4">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div class="stat-content">
-                            <p class="text-xs font-weight-bold text-success text-uppercase mb-1 small fw-bold">Active Users</p>
-                            <h3 class="h2 mb-0 fw-bold"><?= number_format($stats['total_users']) ?></h3>
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div class="card-body p-4 position-relative">
+                        <div class="stat-glow bg-success"></div>
+                        <div class="d-flex justify-content-between mb-3 align-items-start position-relative">
+                            <div class="stat-icon-premium bg-success-soft text-success shadow-sm">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <span class="badge bg-success-soft text-success rounded-pill px-2 py-1 smallest h6 mb-0">+5.4% <i class="fas fa-arrow-up px-1 small"></i></span>
                         </div>
-                        <div class="stat-icon bg-success-soft">
-                            <i class="fas fa-users-cog fa-2x"></i>
-                        </div>
+                        <h3 class="fw-800 display-6 mb-1"><?= number_format($stats['total_users']) ?></h3>
+                        <p class="text-muted small text-uppercase fw-bold letter-spacing-1 mb-0">Active Members</p>
                     </div>
                 </div>
             </div>
 
             <!-- Total Borrowed Stat -->
             <div class="col-xl-3 col-md-6">
-                <div class="card card-admin p-3 border-start border-info border-4">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div class="stat-content">
-                            <p class="text-xs font-weight-bold text-info text-uppercase mb-1 small fw-bold">Borrowed This Week</p>
-                            <h3 class="h2 mb-0 fw-bold"><?= number_format($stats['total_borrowed']) ?></h3>
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div class="card-body p-4 position-relative">
+                        <div class="stat-glow bg-info"></div>
+                        <div class="d-flex justify-content-between mb-3 align-items-start position-relative">
+                            <div class="stat-icon-premium bg-info-soft text-info shadow-sm">
+                                <i class="fas fa-hand-holding-heart"></i>
+                            </div>
+                            <span class="badge bg-danger-soft text-danger rounded-pill px-2 py-1 smallest h6 mb-0">-1.2% <i class="fas fa-arrow-down px-1 small"></i></span>
                         </div>
-                        <div class="stat-icon bg-info-soft">
-                            <i class="fas fa-hand-holding-heart fa-2x"></i>
-                        </div>
+                        <h3 class="fw-800 display-6 mb-1"><?= number_format($stats['total_borrowed']) ?></h3>
+                        <p class="text-muted small text-uppercase fw-bold letter-spacing-1 mb-0">Weekly Borrows</p>
                     </div>
                 </div>
             </div>
 
             <!-- Revenue Stat -->
             <div class="col-xl-3 col-md-6">
-                <div class="card card-admin p-3 border-start border-warning border-4">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div class="stat-content">
-                            <p class="text-xs font-weight-bold text-warning text-uppercase mb-1 small fw-bold">Monthly Revenue</p>
-                            <h3 class="h2 mb-0 fw-bold">$<?= number_format($stats['monthly_revenue'], 2) ?></h3>
+                <div class="card card-premium-stat h-100 border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div class="card-body p-4 position-relative">
+                        <div class="stat-glow bg-warning"></div>
+                        <div class="d-flex justify-content-between mb-3 align-items-start position-relative">
+                            <div class="stat-icon-premium bg-warning-soft text-warning shadow-sm">
+                                <i class="fas fa-gem"></i>
+                            </div>
+                            <span class="badge bg-success-soft text-success rounded-pill px-2 py-1 smallest h6 mb-0">+18% <i class="fas fa-arrow-up px-1 small"></i></span>
                         </div>
-                        <div class="stat-icon bg-warning-soft">
-                            <i class="fas fa-dollar-sign fa-2x"></i>
-                        </div>
+                        <h3 class="fw-800 display-6 mb-1"><?= number_format($stats['monthly_revenue'] / 1000) ?>k</h3>
+                        <p class="text-muted small text-uppercase fw-bold letter-spacing-1 mb-0">Monthly Revenue (KS)</p>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Detailed Stats and Recent Activity -->
-    <div class="row g-4">
-        <!-- Main Chart/Stats Placeholder -->
+    <!-- Main Content Area -->
+    <div class="row g-4 mb-4">
         <div class="col-lg-8">
-            <div class="card card-admin h-100">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-0">
-                    <h5 class="m-0 card-title-admin fw-bold">Library Traffic Overview</h5>
-                    <button class="btn btn-sm btn-light border" type="button"><i class="fas fa-ellipsis-v"></i></button>
+            <div class="card card-premium-main border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header border-0 bg-transparent p-4 pb-0 d-flex justify-content-between align-items-center">
+                    <div class="header-info">
+                        <h5 class="fw-800 text-dark mb-0">Library Engagement Analytics</h5>
+                        <p class="text-muted small mb-0">Traffic trends and user interaction over the last 30 days.</p>
+                    </div>
+                    <select class="form-select form-select-sm rounded-pill border-light shadow-sm bg-light-hint" style="width: auto;">
+                        <option>Last 30 Days</option>
+                        <option>Last 6 Months</option>
+                        <option>Last Year</option>
+                    </select>
                 </div>
-                <div class="card-body p-4 text-center">
-                    <div class="chart-placeholder d-flex flex-column align-items-center justify-content-center py-5">
-                        <img src="https://via.placeholder.com/400x200?text=Weekly+Traffic+Chart" alt="Weekly Chart Placeholder" class="img-fluid opacity-25 mb-4">
-                        <p class="text-muted small">Visualizing traffic and activity trends across the platform.</p>
-                        <a href="#" class="btn btn-primary rounded-pill btn-sm px-4 shadow-sm mt-3">View Detailed Report</a>
+                <div class="card-body p-4">
+                    <div class="chart-container ratio ratio-21x9">
+                        <canvas id="trafficChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Recent Activity Feed -->
         <div class="col-lg-4">
-            <div class="card card-admin h-100">
-                <div class="card-header bg-white py-3 border-0">
-                    <h5 class="m-0 card-title-admin fw-bold">Recent Updates</h5>
+            <div class="card card-premium-main border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header border-0 bg-transparent p-4 pb-0">
+                    <h5 class="fw-800 text-dark mb-0">Live Activity Feed</h5>
                 </div>
-                <div class="card-body p-4 pt-0">
-                    <div class="activity-feed">
-                        <?php foreach ($recent_activities as $activity): ?>
-                        <div class="activity-item d-flex gap-3 mb-4 last-child-mb-0 pb-3 border-bottom border-light">
-                            <div class="activity-icon-sm rounded-circle bg-light d-flex align-items-center justify-content-center" style="width: 2.5rem; height: 2.5rem; flex-shrink: 0;">
-                                <i class="fas fa-bell text-secondary opacity-50"></i>
+                <div class="card-body p-4">
+                    <div class="premium-timeline">
+                        <?php 
+                        $types = [
+                            'borrow' => ['icon' => 'fas fa-book-reader', 'color' => 'primary'],
+                            'user' => ['icon' => 'fas fa-user-plus', 'color' => 'success'],
+                            'system' => ['icon' => 'fas fa-cog', 'color' => 'info'],
+                            'star' => ['icon' => 'fas fa-star', 'color' => 'warning']
+                        ];
+                        foreach ($recent_activities as $activity): 
+                            $type = $types[$activity['type']] ?? $types['system'];
+                        ?>
+                        <div class="timeline-item d-flex gap-3 pb-4 position-relative">
+                            <div class="timeline-icon bg-<?= $type['color'] ?> shadow-<?= $type['color'] ?> text-white rounded-circle d-flex align-items-center justify-content-center mt-1" style="width: 32px; height: 32px; flex-shrink: 0; z-index: 2;">
+                                <i class="<?= $type['icon'] ?> small"></i>
                             </div>
-                            <div class="activity-info">
-                                <p class="mb-0 text-dark" style="font-size: 0.95rem;">
-                                    <strong><?= e($activity['user']) ?></strong> <?= e($activity['action']) ?>
-                                </p>
-                                <p class="mb-0 text-muted small mt-1"><i class="far fa-clock me-1"></i> <?= e($activity['time']) ?></p>
+                            <div class="timeline-content">
+                                <p class="mb-0 text-dark fw-600" style="font-size: 0.9rem;"><?= e($activity['user']) ?> <span class="fw-normal text-muted"><?= e($activity['action']) ?></span></p>
+                                <p class="smallest text-muted mt-1"><i class="far fa-clock me-1"></i> <?= e($activity['time']) ?></p>
                             </div>
                         </div>
                         <?php endforeach; ?>
                         
-                        <div class="text-center mt-3">
-                            <a href="#" class="text-decoration-none small fw-bold text-primary">View All Activities →</a>
+                        <div class="text-center">
+                            <button class="btn btn-soft-primary btn-sm rounded-pill px-4 fw-bold mt-2">View Full Log</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <style>
+    .fw-800 { font-weight: 800; }
+    .fw-600 { font-weight: 600; }
+    .letter-spacing-1 { letter-spacing: 0.05rem; }
+    .smallest { font-size: 0.72rem; }
+    .bg-light-hint { background: rgba(0,0,0,0.02); }
+    .btn-white { background: #fff; color: #4e73df; border: none; }
+    .btn-white:hover { background: #f8f9fc; color: #224abe; }
+    .btn-outline-white { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.4); }
+    .btn-outline-white:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
+
+    .card-premium-stat {
+        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+        border: none !important;
+    }
+    .card-premium-stat:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.08) !important; }
+
+    .stat-glow {
+        position: absolute;
+        width: 151px;
+        height: 151px;
+        right: -50px;
+        bottom: -50px;
+        opacity: 0.05;
+        border-radius: 50%;
+        filter: blur(40px);
+    }
+
+    .stat-icon-premium {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+    }
+
+    .premium-timeline .timeline-item:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 32px;
+        height: calc(100% - 32px);
+        width: 2px;
+        background: rgba(0,0,0,0.05);
+        z-index: 1;
+    }
+
+    [data-bs-theme="dark"] .card-premium-main,
+    [data-bs-theme="dark"] .card-premium-stat {
+        background: #1a1c23 !important;
+    }
+    [data-bs-theme="dark"] .text-dark { color: #f8fafc !important; }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('trafficChart').getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(78, 115, 223, 0.2)');
+        gradient.addColorStop(1, 'rgba(78, 115, 223, 0)');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                datasets: [{
+                    label: 'Page Views',
+                    data: [1200, 1900, 1500, 2500, 2200, 3100, 2800],
+                    borderColor: '#4e73df',
+                    backgroundColor: gradient,
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#4e73df',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { 
+                        beginAtZero: true,
+                        grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.05)' }
+                    }
+                }
+            }
+        });
+    });
+    </script>
     <?php
 });

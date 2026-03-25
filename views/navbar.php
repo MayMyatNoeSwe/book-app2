@@ -21,6 +21,10 @@ $navCats = getCategories();
     --nav-text: #3D405B;
 }
 
+body {
+    padding-top: 112px; /* Accounting for fixed navbar height */
+}
+
 [data-bs-theme="dark"] {
     --nav-glass: rgba(20, 27, 45, 0.9); /* Matching new midnight #141b2d shade */
     --nav-border: rgba(255, 255, 255, 0.08);
@@ -29,8 +33,11 @@ $navCats = getCategories();
 
 /* Floating Wrapper */
 .navbar-wrapper {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
     z-index: 1050;
     padding: 1rem 0;
     pointer-events: none; /* Allow clicks through to background if needed */

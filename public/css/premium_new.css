@@ -1089,7 +1089,7 @@ html {
 
 .home-hero {
     position: relative;
-    padding: 110px 0 90px;
+    padding: 40px 0 30px;
     background: radial-gradient(circle at top left, rgba(242, 204, 143, 0.25), transparent 55%),
         radial-gradient(circle at 80% 20%, rgba(129, 178, 154, 0.25), transparent 45%),
         linear-gradient(135deg, #fff6ef 0%, #f9efe6 45%, #fff 100%);
@@ -1148,9 +1148,9 @@ html {
 
 .hero-title {
     font-family: 'Playfair Display', serif;
-    font-size: clamp(2.6rem, 4vw, 4.6rem);
+    font-size: clamp(2.4rem, 4vw, 3.8rem);
     line-height: 1.05;
-    margin: 16px 0 20px;
+    margin: 12px 0 16px;
     color: var(--bookhouse-dark);
 }
 
@@ -1164,7 +1164,7 @@ html {
     display: flex;
     flex-wrap: wrap;
     gap: 14px;
-    margin: 26px 0 30px;
+    margin: 20px 0 24px;
 }
 
 .hero-search {
@@ -1177,7 +1177,7 @@ html {
     border-radius: 18px;
     padding: 12px;
     box-shadow: 0 18px 36px rgba(61, 64, 91, 0.1);
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 }
 
 .hero-search-field {
@@ -1269,7 +1269,7 @@ html {
     position: relative;
     display: flex;
     justify-content: center;
-    min-height: 420px;
+    min-height: 380px;
 }
 
 .hero-parallax {
@@ -1279,7 +1279,7 @@ html {
 
 .hero-cover-stack {
     position: relative;
-    width: 280px;
+    width: 260px;
     border-radius: 20px;
     box-shadow: 0 30px 60px rgba(61, 64, 91, 0.25);
     overflow: hidden;
@@ -1288,7 +1288,7 @@ html {
 
 .hero-cover {
     width: 100%;
-    height: 420px;
+    height: 380px;
     object-fit: cover;
 }
 
@@ -1463,7 +1463,7 @@ html {
 }
 
 .home-section {
-    padding: 80px 0;
+    padding: 60px 0;
 }
 
 .home-section.alt-surface {

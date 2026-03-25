@@ -12,27 +12,67 @@ use App\Book;
 
 $library = new Library();
 
-// Handle Form Submission
+// Handle Deletion
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
+    if ($library->deleteBook($_GET['id'])) {
+        setFlashMessage('Book successfully deleted!', 'success');
+    } else {
+        setFlashMessage('Error deleting book.', 'danger');
+    }
+    redirect(baseUrl() . '/admin/books.php');
+}
+
+// Handle Form Submission (Add or Edit)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = $_POST['id'] ?? null;
     $title = $_POST['title'] ?? '';
     $author = $_POST['author'] ?? '';
     $category = $_POST['category'] ?? 'Fiction';
-    $price = (float)($_POST['price'] ?? 0);
-    $year = (int)date('Y'); // Default to current year for now
+    $price = (int)($_POST['price'] ?? 15000);
+    $borrowPrice = (int)($_POST['borrow_price'] ?? 5000);
+    $year = (int)($_POST['year'] ?? date('Y'));
+    $totalCopies = (int)($_POST['total_copies'] ?? 1);
     
     if ($title && $author) {
-        $book = new Book($title, $author, $year, 1, null, $category);
-        
-        // Handle Cover Upload
-        if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
-            $library->handleCoverUpload($book, ['cover_image' => $_FILES['cover']]);
-        }
-        
-        try {
-            $library->addBook($book);
-            setFlashMessage('Book successfully added to the collection!', 'success');
-        } catch (Exception $e) {
-            setFlashMessage('Error adding book: ' . $e->getMessage(), 'danger');
+        if ($id) {
+            // Edit existing book
+            $book = $library->getBookById($id);
+            if ($book) {
+                $book->setTitle($title);
+                $book->setAuthor($author);
+                $book->setCategory($category);
+                $book->setPrice($price);
+                $book->setBorrowPrice($borrowPrice);
+                $book->setYear($year);
+                $book->setTotalCopies($totalCopies);
+                
+                // Handle Cover Upload
+                if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
+                    $library->handleCoverUpload($book, ['cover_image' => $_FILES['cover']]);
+                }
+                
+                try {
+                    $library->updateBook($book);
+                    setFlashMessage('Book successfully updated!', 'success');
+                } catch (Exception $e) {
+                    setFlashMessage('Error updating book: ' . $e->getMessage(), 'danger');
+                }
+            }
+        } else {
+            // Add new book
+            $book = new Book($title, $author, $year, $totalCopies, null, $category, null, $price, $borrowPrice);
+            
+            // Handle Cover Upload
+            if (isset($_FILES['cover']) && $_FILES['cover']['error'] === UPLOAD_ERR_OK) {
+                $library->handleCoverUpload($book, ['cover_image' => $_FILES['cover']]);
+            }
+            
+            try {
+                $library->addBook($book);
+                setFlashMessage('Book successfully added to the collection!', 'success');
+            } catch (Exception $e) {
+                setFlashMessage('Error adding book: ' . $e->getMessage(), 'danger');
+            }
         }
         
         redirect(baseUrl() . '/admin/books.php');
@@ -51,16 +91,16 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
     <section class="admin-book-list">
         <div class="row g-4 align-items-center mb-4">
             <div class="col-lg-8">
-                <div class="input-group input-group-lg border shadow-sm rounded-4 overflow-hidden">
-                    <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted"></i></span>
-                    <input type="text" class="form-control border-0 shadow-none ps-0" placeholder="Search by title, author, or ISBN...">
-                    <button class="btn btn-primary px-4 shadow-sm" type="button">Filter</button>
+                <div class="input-group input-group-lg border-0 shadow-sm rounded-4 overflow-hidden bg-white px-3 py-1">
+                    <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted opacity-50"></i></span>
+                    <input type="text" class="form-control border-0 shadow-none ps-1 fs-6" placeholder="Quickly search by title, author, or ISBN identifier...">
+                    <button class="btn btn-soft-primary rounded-pill px-4 ms-2 fw-bold btn-sm my-1" type="button">Apply Filter</button>
                 </div>
             </div>
             <div class="col-lg-4 text-lg-end">
-                <button class="btn btn-primary btn-lg rounded-pill px-4 shadow-primary d-flex align-items-center gap-2 justify-content-center" data-bs-toggle="modal" data-bs-target="#addBookModal">
-                    <i class="fas fa-plus"></i>
-                    <span>Add New Book</span>
+                <button class="btn btn-primary rounded-pill px-5 py-2 shadow-primary d-flex align-items-center gap-2 justify-content-center w-100 w-lg-auto" data-bs-toggle="modal" data-bs-target="#bookModal" onclick="resetForm()">
+                    <i class="fas fa-plus-circle"></i>
+                    <span class="fw-bold">Add New Book</span>
                 </button>
             </div>
         </div>
@@ -111,7 +151,7 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
                                     <span class="badge bg-light text-dark rounded-pill border px-3 fw-normal"><?= e($book->getCategory()) ?></span>
                                 </td>
                                 <td class="px-4 py-3 text-center fw-bold">
-                                    $<?= number_format(19.99, 2) // Assuming a default price if not in DB ?>
+                                    <?= number_format($book->getPrice()) ?> KS
                                 </td>
                                 <td class="px-4 py-3 text-center">
                                     <?php 
@@ -121,10 +161,23 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
                                 </td>
                                 <td class="px-4 py-3 text-end">
                                     <div class="action-btn-group d-flex justify-content-end gap-2">
-                                        <button class="btn btn-sm btn-icon-only rounded-pill btn-soft-primary" title="Edit Book">
+                                        <button class="btn btn-sm btn-icon-only rounded-pill btn-soft-primary edit-book-btn" 
+                                                title="Edit Book"
+                                                data-id="<?= $book->getId() ?>"
+                                                data-title="<?= e($book->getTitle()) ?>"
+                                                data-author="<?= e($book->getAuthor()) ?>"
+                                                data-category="<?= e($book->getCategory()) ?>"
+                                                data-price="<?= $book->getPrice() ?>"
+                                                data-borrow-price="<?= $book->getBorrowPrice() ?>"
+                                                data-year="<?= $book->getYear() ?>"
+                                                data-total-copies="<?= $book->getTotalCopies() ?>"
+                                                data-cover="<?= getBookCoverUrl($book) ?>">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-icon-only rounded-pill btn-soft-danger" title="Delete Book">
+                                        <button class="btn btn-sm btn-icon-only rounded-pill btn-soft-danger delete-book-btn" 
+                                                title="Delete Book"
+                                                data-id="<?= $book->getId() ?>"
+                                                data-title="<?= e($book->getTitle()) ?>">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
@@ -150,88 +203,421 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
         </div>
     </section>
 
-    <!-- Modal for adding a book -->
-    <div class="modal fade" id="addBookModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content border-0 shadow-lg rounded-4">
-                <div class="modal-header bg-white border-0 pt-4 px-4">
-                    <h5 class="modal-title fw-bold text-dark">Add New Book to Collection</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <!-- Modal for adding/editing a book -->
+    <div class="modal fade" id="bookModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-50">
+            <div class="modal-content overflow-hidden border-0 shadow-2xl rounded-5 bg-glass">
+                <div class="modal-header border-0 pt-4 px-5 pb-0">
+                    <div class="header-content">
+                        <h4 class="modal-title fw-800 text-gradient mb-1" id="bookModalTitle">Add New Book to Collection</h4>
+                        <p class="text-muted small mb-0">Fill in the details below to update your library inventory.</p>
+                    </div>
+                    <button type="button" class="btn-close-premium shadow-sm" data-bs-dismiss="modal" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
-                <div class="modal-body p-4 pt-2">
-                    <form id="addBookForm" method="POST" enctype="multipart/form-data">
+                <div class="modal-body p-4">
+                    <form id="bookForm" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="id" id="bookId">
                         <div class="row g-4">
-                            <div class="col-md-8">
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold small text-muted text-uppercase" style="letter-spacing: 1px;">Book Title</label>
-                                    <input type="text" name="title" class="form-control form-control-admin" placeholder="e.g. The Great Gatsby" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold small text-muted text-uppercase" style="letter-spacing: 1px;">Author Name</label>
-                                    <input type="text" name="author" class="form-control form-control-admin" placeholder="e.g. F. Scott Fitzgerald" required>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-bold small text-muted text-uppercase" style="letter-spacing: 1px;">Category</label>
-                                        <select name="category" class="form-select form-control-admin">
-                                            <option value="Fiction" selected>Fiction</option>
-                                            <option value="Non-Fiction">Non-Fiction</option>
-                                            <option value="Romance">Romance</option>
-                                            <option value="Sci-Fi">Sci-Fi</option>
-                                            <option value="Fantasy">Fantasy</option>
-                                        </select>
+                            <div class="col-lg-8">
+                                <div class="form-section mb-3">
+                                    <h6 class="section-label mb-3"><i class="fas fa-info-circle me-2 text-primary"></i>Book Information</h6>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <div class="premium-field">
+                                                <label class="field-label">Book Title</label>
+                                                <div class="input-with-icon">
+                                                    <i class="fas fa-book icon-muted"></i>
+                                                    <input type="text" name="title" id="bookTitle" class="premium-input" placeholder="e.g. The Great Gatsby" required>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="premium-field">
+                                                <label class="field-label">Author Name</label>
+                                                <div class="input-with-icon">
+                                                    <i class="fas fa-user-edit icon-muted"></i>
+                                                    <input type="text" name="author" id="bookAuthor" class="premium-input" placeholder="e.g. F. Scott Fitzgerald" required>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-7">
+                                            <div class="premium-field">
+                                                <label class="field-label">Category</label>
+                                                <div class="input-with-icon">
+                                                    <i class="fas fa-tags icon-muted"></i>
+                                                    <select name="category" id="bookCategory" class="premium-select">
+                                                        <?php 
+                                                        $categories = ['Fiction', 'Non-Fiction', 'Romance', 'Sci-Fi', 'Fantasy', 'Horror', 'Mystery', 'Biography', 'History', 'Self-Help', 'Education'];
+                                                        foreach ($categories as $cat): ?>
+                                                            <option value="<?= $cat ?>"><?= $cat ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-5">
+                                            <div class="premium-field">
+                                                <label class="field-label">Publication Year</label>
+                                                <div class="input-with-icon">
+                                                    <i class="fas fa-calendar-alt icon-muted"></i>
+                                                    <input type="number" name="year" id="bookYear" class="premium-input" placeholder="2024" required>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label fw-bold small text-muted text-uppercase" style="letter-spacing: 1px;">Price ($)</label>
-                                        <input type="number" name="price" step="0.01" class="form-control form-control-admin" placeholder="0.00" required>
+                                </div>
+
+                                <div class="form-section">
+                                    <h6 class="section-label mb-2 mt-2"><i class="fas fa-dollar-sign me-2 text-success"></i>Inventory Logs</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <div class="premium-field">
+                                                <label class="field-label">Price (KS)</label>
+                                                <input type="number" name="price" id="bookPrice" class="premium-input" placeholder="15000" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="premium-field">
+                                                <label class="field-label">Borrow (KS)</label>
+                                                <input type="number" name="borrow_price" id="bookBorrowPrice" class="premium-input" placeholder="5000" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="premium-field">
+                                                <label class="field-label">Total Copies</label>
+                                                <input type="number" name="total_copies" id="bookTotalCopies" class="premium-input" placeholder="1" min="1" required>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-4">
-                                <div id="coverUploadPlaceholder" class="book-cover-upload border-2 border-dashed rounded-4 p-4 text-center d-flex flex-column align-items-center justify-content-center h-100 bg-light-soft hover-bg-light transition-all cursor-pointer position-relative overflow-hidden">
-                                    <input type="file" id="bookCoverInput" name="cover" accept="image/*" class="d-none">
-                                    <div id="uploadUI">
-                                        <i class="fas fa-cloud-upload-alt fa-3x text-primary opacity-25 mb-3"></i>
-                                        <h6 class="mb-1 fw-bold small">Upload Cover</h6>
-                                        <p class="mb-0 text-muted" style="font-size: 0.7rem;">PNG, JPG up to 5MB</p>
+                            <div class="col-lg-4">
+                                <div class="cover-upload-section text-center h-100 p-2">
+                                    <label class="field-label text-center d-block mb-3">Cover Art</label>
+                                    <div id="coverUploadPlaceholder" class="premium-upload-box mb-3" style="height: 220px;">
+                                        <input type="file" id="bookCoverInput" name="cover" accept="image/*" class="d-none">
+                                        
+                                        <div id="uploadUI" class="upload-ui-content">
+                                            <div class="upload-circle mb-2" style="width: 48px; height: 48px; font-size: 1.2rem;">
+                                                <i class="fas fa-cloud-upload-alt text-primary"></i>
+                                            </div>
+                                            <p class="text-muted smallest shadow-text mb-0">PNG, JPG up to 2MB</p>
+                                        </div>
+
+                                        <div id="previewContainer" class="preview-container d-none">
+                                            <img id="coverPreview" src="#" alt="Preview" class="cover-preview-img">
+                                            <div class="preview-overlay">
+                                                <button type="button" id="removeCoverBtn" class="btn btn-danger btn-sm rounded-circle shadow">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <img id="coverPreview" src="#" alt="Preview" class="d-none w-100 h-100 object-fit-cover position-absolute top-0 start-0">
-                                    <button type="button" id="removeCoverBtn" class="btn btn-sm btn-danger rounded-circle position-absolute top-0 end-0 m-2 d-none" style="z-index: 10;">
-                                        <i class="fas fa-times"></i>
-                                    </button>
+                                    <p class="smallest text-muted opacity-75">Upload a cover to make your book stand out in the catalog.</p>
                                 </div>
                             </div>
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer border-0 pb-4 px-4 pt-0">
-                    <button type="button" class="btn btn-light rounded-pill px-4 border" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" form="addBookForm" class="btn btn-primary rounded-pill px-4 shadow-primary">Add Book</button>
+                <div class="modal-footer border-0 p-4 pt-0 d-flex justify-content-between">
+                    <button type="button" class="btn btn-link text-muted text-decoration-none fw-600 px-0" data-bs-dismiss="modal">Discard Changes</button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-soft-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" form="bookForm" id="bookSubmitBtn" class="btn btn-primary btn-premium-gradient rounded-pill px-5 shadow-lg fw-bold">Add Book</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <style>
-    .bg-lightest { background-color: #f8f9fc; }
-    .btn-soft-primary { color: #4e73df; background-color: rgba(78, 115, 223, 0.1); border: none; }
-    .btn-soft-primary:hover { color: #fff; background-color: #4e73df; }
-    .btn-soft-danger { color: #e74a3b; background-color: rgba(231, 74, 59, 0.1); border: none; }
-    .btn-soft-danger:hover { color: #fff; background-color: #e74a3b; }
-    .btn-icon-only { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; }
-    .last-child-mb-0:last-child { margin-bottom: 0 !important; }
-    .cursor-pointer { cursor: pointer; }
-    .bg-light-soft { background-color: #fbfbfd; border: 2px dashed #e1e4ed; }
-    .hover-bg-light:hover { background-color: #f0f1f7; border-color: #bac8f3; }
+    .modal-50 {
+        max-width: 50% !important;
+        width: 50%;
+    }
+
+    @media (max-width: 1200px) {
+        .modal-50 {
+            max-width: 80% !important;
+            width: 80%;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .modal-50 {
+            max-width: 95% !important;
+            width: 95%;
+        }
+    }
+
+    :root {
+        --premium-primary: #4e73df;
+        --premium-secondary: #858796;
+        --premium-bg: #f8f9fc;
+        --input-bg: #fdfdfe;
+        --field-border: #e3e6f0;
+        --text-main: #2e3b5e;
+    }
+
+    [data-bs-theme="dark"] .modal-content {
+        --premium-bg: #1a1c23;
+        --input-bg: #242633;
+        --field-border: #303348;
+        --text-main: #f1f5f9;
+    }
+
+    .bg-glass {
+        background: var(--premium-bg) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+
+    .text-gradient {
+        background: linear-gradient(90deg, #4e73df, #224abe);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .fw-800 { font-weight: 800; }
+    .rounded-5 { border-radius: 1.5rem !important; }
+
+    .btn-close-premium {
+        background: rgba(0,0,0,0.05);
+        border: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--premium-secondary);
+        transition: all 0.2s;
+    }
+    .btn-close-premium:hover { background: rgba(231, 74, 59, 0.1); color: #e74a3b; transform: rotate(90deg); }
+
+    .section-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--premium-secondary);
+        border-bottom: 2px solid rgba(78, 115, 223, 0.1);
+        padding-bottom: 8px;
+    }
+
+    .premium-field { margin-bottom: 0; }
+    .field-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 8px;
+        display: block;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .premium-input, .premium-select {
+        width: 100%;
+        padding: 12px 16px;
+        background: var(--input-bg);
+        border: 1.5px solid var(--field-border);
+        border-radius: 12px;
+        color: var(--text-main);
+        font-size: 0.95rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        outline: none;
+    }
+    .premium-input:focus, .premium-select:focus {
+        border-color: var(--premium-primary);
+        box-shadow: 0 0 0 4px rgba(78, 115, 223, 0.1);
+    }
+
+    .input-with-icon { position: relative; }
+    .input-with-icon .premium-input, 
+    .input-with-icon .premium-select { padding-left: 42px; }
+    .input-with-icon .icon-muted {
+        position: absolute;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--premium-secondary);
+        opacity: 0.5;
+        font-size: 0.9rem;
+    }
+
+    .premium-upload-box {
+        background: var(--input-bg);
+        border: 2px dashed var(--field-border);
+        border-radius: 20px;
+        height: 280px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+    .premium-upload-box:hover {
+        border-color: var(--premium-primary);
+        background: rgba(78, 115, 223, 0.02);
+        transform: translateY(-4px);
+    }
+
+    .upload-circle {
+        width: 64px;
+        height: 64px;
+        background: rgba(78, 115, 223, 0.1);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin: 0 auto;
+    }
+
+    .preview-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+    }
+    .cover-preview-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .preview-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    .preview-container:hover .preview-overlay { opacity: 1; }
+
+    .smallest { font-size: 0.75rem; line-height: 1.4; }
+    .shadow-text { text-shadow: 0 1px 1px rgba(255,255,255,0.8); }
+    .bg-light-hint { background: rgba(0,0,0,0.02); }
+
+    .btn-premium-gradient {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        border: none;
+        transition: all 0.3s;
+    }
+    .btn-premium-gradient:hover {
+        transform: scale(1.05);
+        box-shadow: 0 8px 25px rgba(78, 115, 223, 0.4) !important;
+    }
+
+    .btn-soft-secondary {
+        background: rgba(133, 135, 150, 0.1);
+        color: var(--premium-secondary);
+        border: none;
+    }
+    .btn-soft-secondary:hover { background: rgba(133, 135, 150, 0.2); }
     </style>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Modal references
+        const bookModal = new bootstrap.Modal(document.getElementById('bookModal'));
+        const bookForm = document.getElementById('bookForm');
+        const bookModalTitle = document.getElementById('bookModalTitle');
+        const bookSubmitBtn = document.getElementById('bookSubmitBtn');
+        
+        // Input references
+        const bookId = document.getElementById('bookId');
+        const bookTitle = document.getElementById('bookTitle');
+        const bookAuthor = document.getElementById('bookAuthor');
+        const bookCategory = document.getElementById('bookCategory');
+        const bookYear = document.getElementById('bookYear');
+        const bookPrice = document.getElementById('bookPrice');
+        const bookBorrowPrice = document.getElementById('bookBorrowPrice');
+        const bookTotalCopies = document.getElementById('bookTotalCopies');
+        
+        // Image upload references
         const placeholder = document.getElementById('coverUploadPlaceholder');
         const input = document.getElementById('bookCoverInput');
         const preview = document.getElementById('coverPreview');
+        const previewContainer = document.getElementById('previewContainer');
         const uploadUI = document.getElementById('uploadUI');
         const removeBtn = document.getElementById('removeCoverBtn');
 
+        // Add New Book clicked (from layout button)
+        document.querySelector('[data-bs-target="#addBookModal"]').setAttribute('data-bs-target', '#bookModal');
+        document.querySelector('[data-bs-target="#bookModal"]').addEventListener('click', function() {
+            bookForm.reset();
+            bookId.value = '';
+            bookModalTitle.textContent = 'Add New Book to Collection';
+            bookSubmitBtn.textContent = 'Add Book';
+            resetPreview();
+        });
+
+        // Edit Book clicked
+        document.querySelectorAll('.edit-book-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const data = this.dataset;
+                
+                bookId.value = data.id;
+                bookTitle.value = data.title;
+                bookAuthor.value = data.author;
+                bookCategory.value = data.category;
+                bookYear.value = data.year;
+                bookPrice.value = data.price;
+                bookBorrowPrice.value = data.borrowPrice;
+                bookTotalCopies.value = data.totalCopies;
+                
+                // Set preview if image exists
+                if (data.cover && !data.cover.includes('dummy') && !data.cover.includes('data:image/svg')) {
+                    preview.src = data.cover;
+                    preview.classList.remove('d-none');
+                    previewContainer.classList.remove('d-none');
+                    uploadUI.classList.add('d-none');
+                    placeholder.style.border = 'none';
+                } else {
+                    resetPreview();
+                }
+                
+                bookModalTitle.textContent = 'Edit Book Details';
+                bookSubmitBtn.textContent = 'Update Book';
+                bookModal.show();
+            });
+        });
+
+        // Delete Book clicked
+        document.querySelectorAll('.delete-book-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const title = this.dataset.title;
+                
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: `You are about to delete "${title}". This action cannot be undone!`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#e74a3b',
+                    cancelButtonColor: '#858796',
+                    confirmButtonText: 'Yes, delete it!',
+                    borderRadius: '1rem',
+                    background: document.documentElement.getAttribute('data-bs-theme') === 'dark' ? '#1a1c23' : '#fff',
+                    color: document.documentElement.getAttribute('data-bs-theme') === 'dark' ? '#f1f5f9' : '#2e3b5e'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = `books.php?action=delete&id=${id}`;
+                    }
+                });
+            });
+        });
+
+        // Cover upload logic
         placeholder.addEventListener('click', () => {
             input.click();
         });
@@ -242,10 +628,8 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
                 reader.onload = function(e) {
                     preview.src = e.target.result;
                     preview.classList.remove('d-none');
+                    previewContainer.classList.remove('d-none');
                     uploadUI.classList.add('d-none');
-                    removeBtn.classList.remove('d-none');
-                    placeholder.classList.remove('p-4');
-                    placeholder.classList.add('p-0');
                     placeholder.style.border = 'none';
                 }
                 reader.readAsDataURL(this.files[0]);
@@ -254,15 +638,17 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks) {
 
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            resetPreview();
             input.value = '';
+        });
+
+        function resetPreview() {
             preview.src = '#';
             preview.classList.add('d-none');
+            previewContainer.classList.add('d-none');
             uploadUI.classList.remove('d-none');
-            removeBtn.classList.add('d-none');
-            placeholder.classList.add('p-4');
-            placeholder.classList.remove('p-0');
             placeholder.style.border = '';
-        });
+        }
     });
     </script>
     <?php
