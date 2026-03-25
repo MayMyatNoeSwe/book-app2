@@ -5,21 +5,67 @@ require_once dirname(__DIR__) . '/includes/sessions.php';
 require_once dirname(__DIR__) . '/includes/env_loader.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/views/admin/layout.php';
+use App\Library;
+$library = new Library();
 
-// Mock data for dashboard
+// Fetch real data for dashboard
+$pdo = $library->getPdo();
+
+// Total Books
+$totalBooks = $library->countBooks();
+
+// Total Users
+$stmt = $pdo->query("SELECT COUNT(*) FROM users");
+$totalUsers = $stmt->fetchColumn();
+
+// Total Borrowed (Current)
+$stmt = $pdo->query("SELECT COUNT(*) FROM borrowing_history WHERE returned_at IS NULL");
+$totalBorrowed = $stmt->fetchColumn();
+
+// Monthly Revenue (from orders in the current month)
+$stmt = $pdo->prepare("SELECT SUM(total_amount) FROM orders WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())");
+$stmt->execute();
+$monthlyRevenue = (float)$stmt->fetchColumn();
+
 $stats = [
-    'total_books' => 1250,
-    'total_users' => 450,
-    'total_borrowed' => 85,
-    'monthly_revenue' => 3450500 // In KS
+    'total_books' => $totalBooks,
+    'total_users' => $totalUsers,
+    'total_borrowed' => $totalBorrowed,
+    'monthly_revenue' => $monthlyRevenue
 ];
 
-$recent_activities = [
-    ['user' => 'John Doe', 'action' => 'borrowed "The Great Gatsby"', 'time' => '2 hours ago', 'type' => 'borrow'],
-    ['user' => 'Jane Smith', 'action' => 'registered as new member', 'time' => '5 hours ago', 'type' => 'user'],
-    ['user' => 'System', 'action' => 'database backup completed', 'time' => '1 day ago', 'type' => 'system'],
-    ['user' => 'Mike Johnson', 'action' => 'reviewed "1984" - 5 stars', 'time' => '2 days ago', 'type' => 'star'],
-];
+// Fetch Recent Activities
+$recent_activities = [];
+
+// Recent Borrows
+$stmt = $pdo->query("SELECT u.username, b.title, h.borrowed_at 
+                     FROM borrowing_history h 
+                     JOIN users u ON h.user_id = u.id 
+                     JOIN books b ON h.book_id = b.id 
+                     ORDER BY h.borrowed_at DESC LIMIT 3");
+while ($row = $stmt->fetch()) {
+    $recent_activities[] = [
+        'user' => $row['username'],
+        'action' => 'borrowed "' . $row['title'] . '"',
+        'time' => time_elapsed_string($row['borrowed_at']),
+        'type' => 'borrow'
+    ];
+}
+
+// Recent Users
+$stmt = $pdo->query("SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT 2");
+while ($row = $stmt->fetch()) {
+    $recent_activities[] = [
+        'user' => $row['username'],
+        'action' => 'joined the community',
+        'time' => time_elapsed_string($row['created_at']),
+        'type' => 'user'
+    ];
+}
+
+// Sort activities by time (assuming we can parse or just interleaving is fine for now)
+// For simplicity, I'll just keep them as they are or fetch together with UNION
+// But since they come from different tables with different schemas, separate is easier.
 
 renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activities) {
     ?>
@@ -236,39 +282,80 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('trafficChart').getContext('2d');
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(78, 115, 223, 0.2)');
-        gradient.addColorStop(1, 'rgba(78, 115, 223, 0)');
+        
+        <?php
+        // Fetch last 7 days of activity for the chart
+        $labels = [];
+        $orderCounts = [];
+        $borrowCounts = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-$i days"));
+            $labels[] = date('D', strtotime($date));
+            
+            // Orders count
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE DATE(created_at) = ?");
+            $stmt->execute([$date]);
+            $orderCounts[] = (int)$stmt->fetchColumn();
+            
+            // Borrows count
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE DATE(borrowed_at) = ?");
+            $stmt->execute([$date]);
+            $borrowCounts[] = (int)$stmt->fetchColumn();
+        }
+        ?>
+
+        const labels = <?= json_encode($labels) ?>;
+        const orderData = <?= json_encode($orderCounts) ?>;
+        const borrowData = <?= json_encode($borrowCounts) ?>;
+
+        const gradientOrders = ctx.createLinearGradient(0, 0, 0, 400);
+        gradientOrders.addColorStop(0, 'rgba(78, 115, 223, 0.2)');
+        gradientOrders.addColorStop(1, 'rgba(78, 115, 223, 0)');
+
+        const gradientBorrows = ctx.createLinearGradient(0, 0, 0, 400);
+        gradientBorrows.addColorStop(0, 'rgba(28, 200, 138, 0.1)');
+        gradientBorrows.addColorStop(1, 'rgba(28, 200, 138, 0)');
 
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                datasets: [{
-                    label: 'Page Views',
-                    data: [1200, 1900, 1500, 2500, 2200, 3100, 2800],
-                    borderColor: '#4e73df',
-                    backgroundColor: gradient,
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: '#fff',
-                    pointBorderColor: '#4e73df',
-                    pointBorderWidth: 2,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }]
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Direct Sales',
+                        data: orderData,
+                        borderColor: '#4e73df',
+                        backgroundColor: gradientOrders,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    },
+                    {
+                        label: 'Borrowings',
+                        data: borrowData,
+                        borderColor: '#1cc88a',
+                        backgroundColor: gradientBorrows,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: false }
+                    legend: { position: 'top', align: 'end' }
                 },
                 scales: {
                     x: { grid: { display: false } },
                     y: { 
                         beginAtZero: true,
+                        ticks: { stepSize: 1 },
                         grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.05)' }
                     }
                 }

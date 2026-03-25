@@ -39,9 +39,39 @@ class User
     public function register(string $username, string $email, string $password): bool
     {
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?, 'user')");
+        $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'user')");
         return $stmt->execute([$username, $email, $hash]);
     }
+
+    public function getAllUsers(): array
+    {
+        $stmt = $this->pdo->query("SELECT id, username, email, role FROM users ORDER BY username ASC");
+        return $stmt->fetchAll();
+    }
+
+    public function getUserById(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare("SELECT id, username, email, role FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
+        return $user ?: null;
+    }
+
+    public function updateUserRole(int $id, string $role): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE users SET role = ? WHERE id = ?");
+        return $stmt->execute([$role, $id]);
+    }
+
+    public function deleteUser(int $id): bool
+    {
+        // Don't allow deleting the last admin or yourself
+        if ($id === self::getCurrentUserId()) return false;
+        
+        $stmt = $this->pdo->prepare("DELETE FROM users WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
     public static function isLoggedIn(): bool
     {
         return isset($_SESSION['user_id']);

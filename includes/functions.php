@@ -469,3 +469,50 @@ function getBookCoverUrl($book, string $title = '', string $author = ''): string
     // 3. Fallback to dummy cover
     return getDummyBookCover($extractedTitle, $extractedAuthor);
 }
+
+/**
+ * Convert timestamp to relative time (e.g., 2 hours ago)
+ * @param string $datetime
+ * @param bool $full
+ * @return string
+ */
+function time_elapsed_string($datetime, $full = false) {
+    if (!$datetime || $datetime === '0000-00-00 00:00:00') return 'N/A';
+    $now = new DateTime;
+    $ago = new DateTime($datetime);
+    $diff = $now->diff($ago);
+
+    $w = floor($diff->d / 7);
+    $d = $diff->d - ($w * 7);
+
+    $values = [
+        'y' => $diff->y,
+        'm' => $diff->m,
+        'w' => $w,
+        'd' => $d,
+        'h' => $diff->h,
+        'i' => $diff->i,
+        's' => $diff->s,
+    ];
+
+    $string = [
+        'y' => 'year',
+        'm' => 'month',
+        'w' => 'week',
+        'd' => 'day',
+        'h' => 'hour',
+        'i' => 'minute',
+        's' => 'second',
+    ];
+
+    foreach ($string as $k => &$v) {
+        if ($values[$k]) {
+            $v = $values[$k] . ' ' . $v . ($values[$k] > 1 ? 's' : '');
+        } else {
+            unset($string[$k]);
+        }
+    }
+
+    if (!$full) $string = array_slice($string, 0, 1);
+    return $string ? implode(', ', $string) . ' ago' : 'just now';
+}
