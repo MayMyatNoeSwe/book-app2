@@ -145,8 +145,8 @@ class Library
     // ================ business logic ================
     public function borrowBook(string $bookId, int $userId): bool
     {
-        // Check if user has already borrowed 3 books at a time
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+        // Check if user has already borrowed/pending 3 books
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
         $stmt->execute([$userId]);
         $unreturnedBooks = (int)$stmt->fetchColumn();
         
@@ -159,15 +159,129 @@ class Library
             return false;
         }
 
+        // Check if there's already a pending request for this book
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'pending'");
+        $stmt->execute([$userId, $bookId]);
+        if ((int)$stmt->fetchColumn() > 0) {
+            return false;
+        }
+
         $book = $this->getBookById($bookId);
+        if (!$book || !$book->isAvailable()) return false;
+
+        $dueDate = date('Y-m-d', strtotime('+14 days'));
+        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, book_id, due_date, `status`) VALUES (?,?,?,'pending')");
+        $stmt->execute([$userId, $bookId, $dueDate]);
+        return true;
+    }
+
+    // Admin approves a borrow request
+    public function approveBorrow(int $borrowId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT * FROM borrowing_history WHERE id = ? AND `status` = 'pending'");
+        $stmt->execute([$borrowId]);
+        $record = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$record) return false;
+
+        $book = $this->getBookById($record['book_id']);
         if (!$book || !$book->borrowCopy()) return false;
 
-        $dueDate = date('Y-m-d', strtotime('+14days')); //14-day loan
-        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id,book_id,due_date) VALUES (?,?,?)");
-        $stmt->execute([$userId, $bookId, $dueDate]);
+        $dueDate = date('Y-m-d', strtotime('+14 days'));
+        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET `status` = 'approved', due_date = ?, approved_at = NOW() WHERE id = ?");
+        $stmt->execute([$dueDate, $borrowId]);
         $this->updateBook($book);
-        $this->sendNotification($_SESSION['email'], $book->getTitle(), 'borrowed', $dueDate);
         return true;
+    }
+
+    // Admin rejects a borrow request
+    public function rejectBorrow(int $borrowId, string $reason = ''): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET `status` = 'rejected', admin_notes = ? WHERE id = ? AND `status` = 'pending'");
+        $stmt->execute([$reason, $borrowId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    // Admin approves a return request
+    public function approveReturn(int $borrowId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT * FROM borrowing_history WHERE id = ? AND `status` = 'return_pending'");
+        $stmt->execute([$borrowId]);
+        $record = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$record) return false;
+
+        $book = $this->getBookById($record['book_id']);
+        if (!$book) return false;
+
+        $penalty = $this->calculatePenalty($record['due_date']);
+        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET `status` = 'returned', returned_at = NOW(), penalty_fee = ? WHERE id = ?");
+        $stmt->execute([$penalty, $borrowId]);
+
+        $book->returnCopy();
+        $this->updateBook($book);
+        return true;
+    }
+
+    // Calculate penalty fee (500 Ks per day overdue)
+    public function calculatePenalty(string $dueDate): int
+    {
+        $due = strtotime($dueDate);
+        $now = time();
+        if ($due >= $now) return 0;
+        $overdueDays = (int)floor(($now - $due) / 86400);
+        return $overdueDays * 500;
+    }
+
+    // Mark penalty as paid
+    public function markPenaltyPaid(int $borrowId): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET penalty_paid = 1 WHERE id = ?");
+        $stmt->execute([$borrowId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    // Get borrow requests for admin
+    public function getBorrowRequests(string $status = 'all', int $limit = 50, int $offset = 0): array
+    {
+        $sql = "SELECT bh.*, u.username, u.email, b.title, b.author, b.cover_image, b.category
+                FROM borrowing_history bh
+                JOIN users u ON bh.user_id = u.id
+                JOIN books b ON bh.book_id = b.id";
+        $params = [];
+        
+        if ($status !== 'all') {
+            $sql .= " WHERE bh.`status` = ?";
+            $params[] = $status;
+        }
+        
+        $sql .= " ORDER BY bh.borrowed_at DESC LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    // Count borrow requests by status
+    public function countBorrowRequests(string $status = 'all'): int
+    {
+        $sql = "SELECT COUNT(*) FROM borrowing_history";
+        $params = [];
+        if ($status !== 'all') {
+            $sql .= " WHERE `status` = ?";
+            $params[] = $status;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    // Check if user has a pending borrow for a book
+    public function hasPendingBorrow(int $userId, string $bookId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'pending'");
+        $stmt->execute([$userId, $bookId]);
+        return (int)$stmt->fetchColumn() > 0;
     }
     public function addReview(int $userId, string $bookId, int $rating, ?string $text): void
     {
@@ -276,27 +390,24 @@ class Library
     public function isCurrentlyBorrowing(int $userId, string $bookId): bool
     {
         $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history 
-            WHERE user_id = ? AND book_id = ? AND returned_at IS NULL");
+            WHERE user_id = ? AND book_id = ? AND returned_at IS NULL AND `status` IN ('approved','return_pending')");
         $stmt->execute([$userId, $bookId]);
         return (int)$stmt->fetchColumn() > 0;
     }
 
+    // User requests to return a book (goes to admin for approval)
     public function returnBook(string $bookId, int $userId): bool
     {
         $book = $this->getBookById($bookId);
         if (!$book) return false;
 
-        // Mark as returned in borrowing history
+        // Set status to return_pending (admin must approve)
         $stmt = $this->pdo->prepare("UPDATE borrowing_history 
-            SET returned_at = NOW() 
-            WHERE user_id = ? AND book_id = ? AND returned_at IS NULL");
+            SET `status` = 'return_pending' 
+            WHERE user_id = ? AND book_id = ? AND returned_at IS NULL AND `status` = 'approved'");
         $stmt->execute([$userId, $bookId]);
 
-        // Return the copy to available stock
-        $book->returnCopy();
-        $this->updateBook($book);
-
-        return true;
+        return $stmt->rowCount() > 0;
     }
 
     // ======================== Notifications ========================

@@ -6,19 +6,83 @@ require_once dirname(__DIR__) . '/includes/env_loader.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/views/admin/layout.php';
 
-// Mock data for dashboard
+// Real data from database
+use App\Library;
+$library = new Library();
+$pdo = $library->getPdo();
+
+// Real Stats
+$totalBooks = $pdo->query("SELECT COUNT(*) FROM books")->fetchColumn();
+$totalUsers = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+$totalBorrowed = $pdo->query("SELECT COUNT(*) FROM borrowing_history WHERE returned_at IS NULL")->fetchColumn();
+
+// Monthly revenue from orders
+$monthlyRevenue = 0;
+try {
+    $stmt = $pdo->query("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)");
+    $monthlyRevenue = (int)$stmt->fetchColumn();
+} catch (Exception $e) {
+    $monthlyRevenue = 0;
+}
+
 $stats = [
-    'total_books' => 1250,
-    'total_users' => 450,
-    'total_borrowed' => 85,
-    'monthly_revenue' => 3450500 // In KS
+    'total_books' => $totalBooks,
+    'total_users' => $totalUsers,
+    'total_borrowed' => $totalBorrowed,
+    'monthly_revenue' => $monthlyRevenue
 ];
 
-$recent_activities = [
-    ['user' => 'John Doe', 'action' => 'borrowed "The Great Gatsby"', 'time' => '2 hours ago', 'type' => 'borrow'],
-    ['user' => 'Jane Smith', 'action' => 'registered as new member', 'time' => '5 hours ago', 'type' => 'user'],
-    ['user' => 'System', 'action' => 'database backup completed', 'time' => '1 day ago', 'type' => 'system']
-];
+// Real recent activities from multiple sources
+$recent_activities = [];
+
+// Recent borrows
+try {
+    $stmt = $pdo->query("
+        SELECT u.username AS user, CONCAT('borrowed \"', b.title, '\"') AS action, bh.borrowed_at AS created_at, 'borrow' AS type
+        FROM borrowing_history bh
+        JOIN users u ON bh.user_id = u.id
+        JOIN books b ON bh.book_id = b.id
+        ORDER BY bh.borrowed_at DESC
+    ");
+    $recent_activities = array_merge($recent_activities, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+// Recent orders
+try {
+    $stmt = $pdo->query("
+        SELECT u.username AS user, CONCAT('placed order #', o.order_number) AS action, o.created_at, 'order' AS type
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        ORDER BY o.created_at DESC
+    ");
+    $recent_activities = array_merge($recent_activities, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+// Recent user registrations
+try {
+    $stmt = $pdo->query("
+        SELECT username AS user, 'registered as new member' AS action, created_at, 'user' AS type
+        FROM users
+        ORDER BY created_at DESC
+    ");
+    $recent_activities = array_merge($recent_activities, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+// Sort all activities by date descending
+usort($recent_activities, function($a, $b) {
+    return strtotime($b['created_at']) - strtotime($a['created_at']);
+});
+
+// Convert timestamps to human-readable "time ago"
+foreach ($recent_activities as &$act) {
+    $diff = time() - strtotime($act['created_at']);
+    if ($diff < 60) $act['time'] = 'Just now';
+    elseif ($diff < 3600) $act['time'] = floor($diff / 60) . ' min ago';
+    elseif ($diff < 86400) $act['time'] = floor($diff / 3600) . ' hours ago';
+    elseif ($diff < 604800) $act['time'] = floor($diff / 86400) . ' days ago';
+    else $act['time'] = date('M d, Y', strtotime($act['created_at']));
+}
+unset($act);
 
 renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activities) {
     ?>
@@ -121,10 +185,17 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                 </div>
                 <div class="card-body p-4">
                     <div class="timeline-premium">
-                        <?php foreach($recent_activities as $act): ?>
-                        <div class="timeline-item-premium d-flex gap-3 mb-4" data-type="<?= $act['type'] ?>">
-                            <div class="timeline-bg-icon bg-lightest text-primary">
-                                <i class="fas fa-bolt small"></i>
+                        <?php foreach($recent_activities as $idx => $act): 
+                            $icon = 'fa-bolt';
+                            $iconColor = 'text-primary';
+                            if ($act['type'] === 'borrow') { $icon = 'fa-book-reader'; $iconColor = 'text-info'; }
+                            elseif ($act['type'] === 'order') { $icon = 'fa-shopping-bag'; $iconColor = 'text-success'; }
+                            elseif ($act['type'] === 'user') { $icon = 'fa-user-plus'; $iconColor = 'text-warning'; }
+                            $hiddenClass = $idx >= 5 ? 'activity-hidden' : '';
+                        ?>
+                        <div class="timeline-item-premium d-flex gap-3 mb-4 <?= $hiddenClass ?>" data-type="<?= $act['type'] ?>" style="<?= $idx >= 5 ? 'display:none;' : '' ?>">
+                            <div class="timeline-bg-icon bg-lightest <?= $iconColor ?>">
+                                <i class="fas <?= $icon ?> small"></i>
                             </div>
                             <div>
                                 <h6 class="mb-0 text-dark fw-bold" style="font-size: 0.9rem;"><?= e($act['user']) ?></h6>
@@ -134,6 +205,14 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                         </div>
                         <?php endforeach; ?>
                     </div>
+                    <?php if (count($recent_activities) > 5): ?>
+                    <button id="showAllActivityBtn" class="btn btn-soft-primary rounded-pill btn-sm w-100 fw-bold mt-2">
+                        <i class="fas fa-chevron-down me-1"></i>View All Details (<span id="hiddenCount"><?= count($recent_activities) - 5 ?></span> more)
+                    </button>
+                    <button id="hideActivityBtn" class="btn btn-soft-secondary rounded-pill btn-sm w-100 fw-bold mt-2" style="display:none;">
+                        <i class="fas fa-chevron-up me-1"></i>Show Less
+                    </button>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -178,6 +257,26 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                 }
             }
         });
+
+        // Activity show/hide toggle
+        const showBtn = document.getElementById('showAllActivityBtn');
+        const hideBtn = document.getElementById('hideActivityBtn');
+        if (showBtn && hideBtn) {
+            showBtn.addEventListener('click', function() {
+                document.querySelectorAll('.activity-hidden').forEach(el => {
+                    el.style.display = '';
+                });
+                showBtn.style.display = 'none';
+                hideBtn.style.display = '';
+            });
+            hideBtn.addEventListener('click', function() {
+                document.querySelectorAll('.activity-hidden').forEach(el => {
+                    el.style.display = 'none';
+                });
+                hideBtn.style.display = 'none';
+                showBtn.style.display = '';
+            });
+        }
     });
     </script>
     <?php

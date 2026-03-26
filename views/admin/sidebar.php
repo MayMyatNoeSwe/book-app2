@@ -31,6 +31,21 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
         <div class="menu-label">MANAGEMENT</div>
         <ul class="nav flex-column gap-1">
             <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/borrows.php" class="nav-link <?= $currentScript === 'borrows.php' ? 'active' : '' ?>">
+                    <i class="fas fa-hand-holding-heart"></i>
+                    <span>Borrows</span>
+                    <?php
+                    // Show pending count badge
+                    try {
+                        $bPdo = (new \App\Library())->getPdo();
+                        $pendingCount = (int)$bPdo->query("SELECT COUNT(*) FROM borrowing_history WHERE `status` IN ('pending','return_pending')")->fetchColumn();
+                        if ($pendingCount > 0):
+                    ?>
+                        <span class="badge bg-danger rounded-pill ms-auto" style="font-size:10px;"><?= $pendingCount ?></span>
+                    <?php endif; } catch(Exception $e) {} ?>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="<?= baseUrl() ?>/admin/categories.php" class="nav-link <?= $currentScript === 'categories.php' ? 'active' : '' ?>">
                     <i class="fas fa-layer-group"></i>
                     <span>Categories</span>

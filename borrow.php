@@ -25,32 +25,43 @@ $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options'
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'return') {
     $bookId = $_POST['book_id'] ?? '';
     if ($library->returnBook($bookId, $userId)) {
-        $_SESSION['success_msg'] = "Book returned successfully!";
+        $_SESSION['success_msg'] = "Return request submitted! Waiting for admin approval.";
     } else {
-        $_SESSION['error_msg'] = "Failed to return the book. You may not be borrowing it.";
+        $_SESSION['error_msg'] = "Failed to submit return request. You may not be borrowing it.";
     }
     header('Location: borrow.php');
     exit;
 }
 
-// Fetch Active Borrows
+// Fetch Pending Borrows
+$stmtPending = $pdo->prepare("
+    SELECT bh.*, b.title, b.author, b.cover_image, b.category 
+    FROM borrowing_history bh
+    JOIN books b ON bh.book_id = b.id
+    WHERE bh.user_id = ? AND bh.`status` = 'pending'
+    ORDER BY bh.borrowed_at DESC
+");
+$stmtPending->execute([$userId]);
+$pendingBorrows = $stmtPending->fetchAll();
+
+// Fetch Active Borrows (approved)
 $stmtActive = $pdo->prepare("
     SELECT bh.*, b.title, b.author, b.cover_image, b.category 
     FROM borrowing_history bh
     JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.returned_at IS NULL
+    WHERE bh.user_id = ? AND bh.`status` IN ('approved', 'return_pending')
     ORDER BY bh.borrowed_at DESC
 ");
 $stmtActive->execute([$userId]);
 $activeBorrows = $stmtActive->fetchAll();
 
-// Fetch Past Borrows
+// Fetch Past Borrows (returned + rejected)
 $stmtPast = $pdo->prepare("
     SELECT bh.*, b.title, b.author, b.cover_image, b.category 
     FROM borrowing_history bh
     JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.returned_at IS NOT NULL
-    ORDER BY bh.returned_at DESC
+    WHERE bh.user_id = ? AND bh.`status` IN ('returned', 'rejected')
+    ORDER BY COALESCE(bh.returned_at, bh.borrowed_at) DESC
 ");
 $stmtPast->execute([$userId]);
 $pastBorrows = $stmtPast->fetchAll();
@@ -206,6 +217,11 @@ include 'views/header.php';
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending" type="button" role="tab" aria-selected="false">
+                    Pending Requests (<?= count($pendingBorrows) ?>)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="past-tab" data-bs-toggle="tab" data-bs-target="#past" type="button" role="tab" aria-selected="false">
                     Past History (<?= count($pastBorrows) ?>)
                 </button>
@@ -227,7 +243,8 @@ include 'views/header.php';
             <?php else: ?>
                 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
                     <?php foreach ($activeBorrows as $b): 
-                        $isOverdue = strtotime($b['due_date']) < time();
+                        $isOverdue = strtotime($b['due_date']) < time() && $b['status'] === 'approved';
+                        $isReturnPending = $b['status'] === 'return_pending';
                     ?>
                         <div class="col">
                             <div class="bw-card">
@@ -239,7 +256,9 @@ include 'views/header.php';
                                         <h5><a href="book-details.php?id=<?= $b['book_id'] ?>"><?= e($b['title']) ?></a></h5>
                                         <div class="bw-author">by <?= e($b['author']) ?></div>
                                         
-                                        <?php if ($isOverdue): ?>
+                                        <?php if ($isReturnPending): ?>
+                                            <div class="bw-status return_pending" style="background:rgba(139,92,246,0.1); color:#7c3aed;"><i class="fas fa-hourglass-half"></i> Return Pending</div>
+                                        <?php elseif ($isOverdue): ?>
                                             <div class="bw-status overdue"><i class="fas fa-exclamation-circle"></i> Overdue</div>
                                         <?php else: ?>
                                             <div class="bw-status active"><i class="fas fa-clock"></i> Reading</div>
@@ -248,16 +267,67 @@ include 'views/header.php';
                                         <div class="bw-time">
                                             <i class="far fa-calendar"></i> Due: <?= date('M j, Y', strtotime($b['due_date'])) ?>
                                         </div>
+
+                                        <?php if ($isOverdue): 
+                                            $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
+                                            $penalty = $overdueDays * 500;
+                                        ?>
+                                            <div class="mt-2" style="font-size:11px; font-weight:700; color:#ef4444;">
+                                                <i class="fas fa-coins me-1"></i> Penalty: <?= number_format($penalty) ?> Ks
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
-                                    <form method="POST">
-                                        <input type="hidden" name="action" value="return">
-                                        <input type="hidden" name="book_id" value="<?= e($b['book_id']) ?>">
-                                        <button type="button" class="bw-btn-return" onclick="confirmReturn(this)">
-                                            <i class="fas fa-box"></i> Return Book
-                                        </button>
-                                    </form>
+                                    <?php if ($isReturnPending): ?>
+                                        <div class="bw-btn-returned" style="border-style: solid;"><i class="fas fa-clock me-2"></i>Waiting Approval</div>
+                                    <?php else: ?>
+                                        <form method="POST">
+                                            <input type="hidden" name="action" value="return">
+                                            <input type="hidden" name="book_id" value="<?= e($b['book_id']) ?>">
+                                            <button type="button" class="bw-btn-return" onclick="confirmReturn(this)">
+                                                <i class="fas fa-box"></i> Return Book
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Pending Tab -->
+        <div class="tab-pane fade" id="pending" role="tabpanel" tabindex="0">
+            <?php if (empty($pendingBorrows)): ?>
+                <div class="bw-empty">
+                    <i class="fas fa-hourglass-start"></i>
+                    <h4>No pending requests</h4>
+                    <p>Borrow requests waiting for admin approval will appear here.</p>
+                </div>
+            <?php else: ?>
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    <?php foreach ($pendingBorrows as $b): ?>
+                        <div class="col">
+                            <div class="bw-card">
+                                <div class="bw-card-top">
+                                    <img src="<?= getBookCoverUrl((object)$b, $b['title'], $b['author']) ?>" class="bw-cover"
+                                         onerror="this.src='<?= getDummyBookCover($b['title'], $b['author'], 150, 200) ?>'">
+                                    <div class="bw-info">
+                                        <div class="bw-cat"><?= e($b['category']) ?></div>
+                                        <h5><a href="book-details.php?id=<?= $b['book_id'] ?>"><?= e($b['title']) ?></a></h5>
+                                        <div class="bw-author">by <?= e($b['author']) ?></div>
+                                        
+                                        <div class="bw-status pending" style="background:rgba(245,158,11,0.1); color:#d97706;"><i class="fas fa-clock"></i> Pending Approval</div>
+                                        
+                                        <div class="bw-time">
+                                            <i class="far fa-calendar-plus"></i> Requested: <?= date('M j, Y', strtotime($b['borrowed_at'])) ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="bw-card-actions">
+                                    <div class="bw-btn-returned" style="border-style: solid;"><i class="fas fa-shield-alt me-2"></i>Under Review</div>
                                 </div>
                             </div>
                         </div>
@@ -287,17 +357,40 @@ include 'views/header.php';
                                         <h5><a href="book-details.php?id=<?= $b['book_id'] ?>"><?= e($b['title']) ?></a></h5>
                                         <div class="bw-author">by <?= e($b['author']) ?></div>
                                         
-                                        <div class="bw-status returned" style="background:rgba(0,0,0,0.05); color:var(--bookhouse-text-muted);"><i class="fas fa-check-circle"></i> Returned</div>
+                                        <?php if ($b['status'] === 'rejected'): ?>
+                                            <div class="bw-status overdue" style="background:rgba(239,68,68,0.05);"><i class="fas fa-times-circle"></i> Rejected</div>
+                                            <?php if ($b['admin_notes']): ?>
+                                                <div class="mt-1 small text-muted">Reason: <?= e($b['admin_notes']) ?></div>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <div class="bw-status returned" style="background:rgba(0,0,0,0.05); color:var(--bookhouse-text-muted);"><i class="fas fa-check-circle"></i> Returned</div>
+                                        <?php endif; ?>
                                         
                                         <div class="bw-time mt-2">
                                             <div>Borrowed: <?= date('M j, Y', strtotime($b['borrowed_at'])) ?></div>
-                                            <div class="w-100"></div>
-                                            <div>Returned: <?= date('M j, Y', strtotime($b['returned_at'])) ?></div>
+                                            <?php if ($b['returned_at']): ?>
+                                                <div class="w-100"></div>
+                                                <div>Returned: <?= date('M j, Y', strtotime($b['returned_at'])) ?></div>
+                                            <?php endif; ?>
                                         </div>
+
+                                        <?php if (($b['penalty_fee'] ?? 0) > 0): ?>
+                                            <div class="mt-2 p-2 rounded <?php echo ($b['penalty_paid'] ?? 0) ? 'bg-light text-success' : 'bg-danger-subtle text-danger'; ?>" style="font-size:11px; font-weight:700;">
+                                                <i class="fas <?= ($b['penalty_paid'] ?? 0) ? 'fa-check-circle' : 'fa-coins' ?> me-1"></i> 
+                                                Penalty: <?= number_format($b['penalty_fee']) ?> Ks
+                                                <?= ($b['penalty_paid'] ?? 0) ? ' (Paid)' : ' (Unpaid)' ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
-                                    <div class="bw-btn-returned"><i class="fas fa-check me-2"></i>Completed</div>
+                                    <div class="bw-btn-returned">
+                                        <?php if ($b['status'] === 'rejected'): ?>
+                                            <i class="fas fa-times me-2"></i>Rejected
+                                        <?php else: ?>
+                                            <i class="fas fa-check me-2"></i>Completed
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
                             </div>
                         </div>

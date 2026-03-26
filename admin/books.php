@@ -151,8 +151,8 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks, $totalCat
         <div class="col-lg-12">
             <div class="input-group input-group-lg border-0 shadow-sm rounded-4 overflow-hidden bg-white px-3 py-1">
                 <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted opacity-50"></i></span>
-                <input type="text" class="form-control border-0 shadow-none ps-1 fs-6" placeholder="Execute Deep search across titles, authors, and classification metadata...">
-                <button class="btn btn-soft-primary rounded-pill px-4 ms-2 fw-bold btn-sm my-1" type="button">Apply Filter</button>
+                <input type="text" id="bookSearch" class="form-control border-0 shadow-none ps-1 fs-6" placeholder="Execute Deep search across titles, authors, and classification metadata...">
+                <button class="btn btn-soft-primary rounded-pill px-4 ms-2 fw-bold btn-sm my-1" type="button" id="applyFilterBtn">Apply Filter</button>
             </div>
         </div>
     </div>
@@ -179,7 +179,7 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks, $totalCat
                             <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider text-end">Control</th>
                         </tr>
                     </thead>
-                        <tbody class="border-top-0">
+                        <tbody id="inventoryTableBody" class="border-top-0">
                             <?php foreach ($books as $book): ?>
                             <tr>
                                 <td class="px-4 py-3 fw-bold text-muted small">#<?= substr($book->getId(), -4) ?></td>
@@ -697,6 +697,24 @@ renderAdminLayout('Manage Books', function() use ($books, $totalBooks, $totalCat
             previewContainer.classList.add('d-none');
             uploadUI.classList.remove('d-none');
             placeholder.style.border = '';
+        }
+
+        // Live filtering logic
+        const bookSearch = document.getElementById('bookSearch');
+        if (bookSearch) {
+            bookSearch.addEventListener('input', function(e) {
+                const term = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#inventoryTableBody tr');
+                
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(term)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
         }
     });
     </script>

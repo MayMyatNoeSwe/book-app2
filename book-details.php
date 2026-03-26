@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
     
     switch ($action) {
         case 'borrow':
-            $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+            $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
             $stmt->execute([$userId]);
             $currentBorrows = (int)$stmt->fetchColumn();
             
@@ -45,11 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
                 $messageType = 'error';
             } else {
                 if ($library->borrowBook($bookId, $userId)) {
-                    $message = 'Book borrowed successfully! Due date: ' . date('M j, Y', strtotime('+14 days'));
+                    $message = 'Borrow request submitted! Waiting for admin approval.';
                     $messageType = 'success';
                     $book = $library->getBookById($bookId);
                 } else {
-                    $message = 'Unable to borrow this book. Please try again.';
+                    $message = 'Unable to borrow this book. You may already have a pending request.';
                     $messageType = 'error';
                 }
             }
@@ -57,11 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
             
         case 'return':
             if ($library->returnBook($bookId, $userId)) {
-                $message = 'Book returned successfully! Thank you.';
+                $message = 'Return request submitted! Waiting for admin approval.';
                 $messageType = 'success';
                 $book = $library->getBookById($bookId);
             } else {
-                $message = 'Unable to return this book. Please contact support.';
+                $message = 'Unable to submit return request. Please contact support.';
                 $messageType = 'error';
             }
             break;
@@ -121,17 +121,25 @@ try {
 $isCurrentlyBorrowing = false;
 $hasBorrowedBefore = false;
 $unreturnedBooksCount = 0;
+$hasPendingBorrow = false;
+$isReturnPending = false;
 if (Auth::check()) {
     $isCurrentlyBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $bookId);
+    $hasPendingBorrow = $library->hasPendingBorrow(Auth::id(), $bookId);
     $userId = Auth::id();
     $pdo = $library->getPdo();
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
     $stmt->execute([$userId]);
     $unreturnedBooksCount = $stmt->fetchColumn();
+
+    // Check if return is pending for this book
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'return_pending'");
+    $stmt->execute([$userId, $bookId]);
+    $isReturnPending = (int)$stmt->fetchColumn() > 0;
 }
 
 // Calculate average rating
@@ -547,12 +555,20 @@ include 'views/header.php';
                             <?php endif; ?>
                         <?php else: ?>
                             <a href="login.php" class="bd-btn bd-btn-primary">
-                                <i class="fas fa-sign-in-alt"></i> Login to Download
+                                <i class="fas fa-sign-in-alt"></i> Download
                             </a>
                         <?php endif; ?>
                     <?php else: ?>
                         <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-                            <?php if (Auth::check() && $isCurrentlyBorrowing): ?>
+                            <?php if (Auth::check() && $hasPendingBorrow): ?>
+                                <button class="bd-btn bd-btn-outline" disabled style="opacity:0.7;cursor:not-allowed;">
+                                    <i class="fas fa-hourglass-half"></i> Pending Approval
+                                </button>
+                            <?php elseif (Auth::check() && $isReturnPending): ?>
+                                <button class="bd-btn bd-btn-outline" disabled style="opacity:0.7;cursor:not-allowed;background:rgba(139,92,246,0.1);border-color:rgba(139,92,246,0.3)!important;color:#7c3aed;">
+                                    <i class="fas fa-hourglass-half"></i> Return Pending
+                                </button>
+                            <?php elseif (Auth::check() && $isCurrentlyBorrowing): ?>
                                 <button class="bd-btn bd-btn-success" disabled><i class="fas fa-book-reader"></i> Currently Reading</button>
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="action" value="return">
@@ -560,13 +576,13 @@ include 'views/header.php';
                                 </form>
                             <?php elseif ($book->isAvailable()): ?>
                                 <?php if (Auth::check()): ?>
-                                    <button type="button" class="bd-btn bd-btn-primary" data-bs-toggle="modal" data-bs-target="#borrowConfirmModal">
-                                        <i class="fas fa-book"></i> Borrow Now
+                                    <button type="button" class="bd-btn bd-btn-primary" onclick="confirmBorrow()">
+                                        <i class="fas fa-book"></i> Borrow
                                     </button>
                                 <?php else: ?>
-                                    <a href="login.php" class="bd-btn bd-btn-primary">
-                                        <i class="fas fa-sign-in-alt"></i> Login to Borrow
-                                    </a>
+                                    <button type="button" class="bd-btn bd-btn-primary" onclick="borrowLoginAlert()">
+                                        <i class="fas fa-sign-in-alt"></i> Borrow
+                                    </button>
                                 <?php endif; ?>
                             <?php else: ?>
                                 <?php if (Auth::check()): ?>
@@ -577,9 +593,9 @@ include 'views/header.php';
                                         </button>
                                     </form>
                                 <?php else: ?>
-                                    <a href="login.php" class="bd-btn bd-btn-outline" style="text-decoration:none;">
-                                        <i class="fas fa-sign-in-alt"></i> Login to Borrow
-                                    </a>
+                                    <button type="button" class="bd-btn bd-btn-outline" onclick="borrowLoginAlert()">
+                                        <i class="fas fa-sign-in-alt"></i> Borrow
+                                    </button>
                                 <?php endif; ?>
                             <?php endif; ?>
 
@@ -760,76 +776,99 @@ include 'views/header.php';
 </div>
 <?php endif; ?>
 
-<!-- Borrow Confirmation Modal -->
-<div class="modal fade bd-modal" id="borrowConfirmModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
-        <div class="modal-content text-center shadow-lg" style="border-radius: 20px; border: none;">
-            <div class="modal-header d-flex flex-column align-items-start position-relative" style="background: #d48b71; padding: 30px 24px 20px; color: #fff;">
-                <button type="button" class="btn-close btn-close-white position-absolute" data-bs-dismiss="modal" style="top: 20px; right: 20px;"></button>
-                <div class="d-flex align-items-center gap-3">
-                    <div style="width: 45px; height: 45px; background: rgba(255,255,255,0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">
-                        <i class="fas fa-bookmark"></i>
-                    </div>
-                    <div class="text-start">
-                        <h4 class="mb-1" style="font-family: 'Playfair Display', serif; font-weight: 800; font-size: 22px; line-height: 1;">Borrow Confirmation</h4>
-                        <p class="mb-0" style="font-size: 14px; opacity: 0.9;">You're one step away from your next read.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-body" style="padding: 24px;">
-                <!-- Policy Box -->
-                <div style="background: #fafafa; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 24px; display: flex; gap: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);">
-                    <div style="color: #d48b71; font-size: 18px; margin-top:2px;">
-                        <i class="fas fa-info-circle"></i>
-                    </div>
-                    <div>
-                        <div style="font-weight: 800; font-family: 'Playfair Display', serif; color: var(--bookhouse-text); font-size: 16px; margin-bottom: 4px;">Borrowing Policy</div>
-                        <div style="font-size: 13.5px; color: var(--bookhouse-text-muted); line-height: 1.5;">Return within 14 days. Late returns may incur a small fee.</div>
-                    </div>
-                </div>
-
-                <!-- Borrowing Details Section -->
-                <?php if (Auth::check()): ?>
-                <div style="background: #ffffff; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
-                    <h6 class="fw-800 mb-3" style="font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">Your Borrowing Summary</h6>
-                    <ul class="list-unstyled mb-0" style="font-size: 14px; color: var(--bookhouse-text); line-height: 1.8;">
-                        <li><i class="fas fa-calendar-day text-success me-2"></i><strong>Duration:</strong> 14 Days</li>
-                        <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
-                        <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
-                        <li>
-                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
-                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
-                            <?php if ($unreturnedBooksCount >= 3): ?>
-                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
-                            <?php elseif ($unreturnedBooksCount > 0): ?>
-                                <span class="text-danger small">(Please return on time)</span>
-                            <?php endif; ?>
-                        </li>
-                    </ul>
-                </div>
-                <?php endif; ?>
-                
-                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
-                    <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px; text-align: center; color: #dc2626;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</div>
-                <?php else: ?>
-                    <div style="font-size: 15px; color: var(--bookhouse-text); margin-bottom: 16px; text-align: center;">Ready to proceed?</div>
-                <?php endif; ?>
-                
-                <form method="POST">
-                    <input type="hidden" name="action" value="borrow">
-                    <button type="submit" class="btn w-100" style="background: #d48b71; color: #fff; padding: 14px; border-radius: 999px; font-weight: 700; font-size: 15px; border: none; box-shadow: 0 4px 12px rgba(212,139,113,0.3); margin-bottom: 12px; transition: filter 0.2s;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
-                        <i class="fas fa-check me-2"></i> Confirm & Borrow
-                    </button>
-                    <button type="button" class="btn w-100" data-bs-dismiss="modal" style="background: transparent; border: none; color: var(--bookhouse-text-muted); font-size: 14px; padding: 10px; transition: color 0.2s;">
-                        <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?>
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Borrow via SweetAlert2 -->
+<form method="POST" id="borrowForm" style="display:none;">
+    <input type="hidden" name="action" value="borrow">
+</form>
 
 <script>
+// ─── Login Required Alert (for non-logged-in users) ───
+function borrowLoginAlert() {
+    Swal.fire({
+        icon: 'info',
+        title: 'Login Required',
+        text: 'Please login to borrow this book.',
+        showCancelButton: true,
+        confirmButtonText: 'Login Now',
+        cancelButtonText: 'Later',
+        confirmButtonColor: '#d48b71',
+        cancelButtonColor: '#9ca3af',
+        reverseButtons: true,
+        showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = 'login.php';
+        }
+    });
+}
+
+// ─── Borrow Confirmation Alert ───
+function confirmBorrow() {
+    <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+    Swal.fire({
+        icon: 'error',
+        title: 'Borrow Limit Reached',
+        html: '<div style="font-size:15px;line-height:1.7;">' +
+              'You currently have <strong><?= $unreturnedBooksCount ?></strong> unreturned books (max 3).<br>' +
+              'Please return a book before borrowing a new one.' +
+              '</div>',
+        confirmButtonText: 'Got it',
+        confirmButtonColor: '#d48b71',
+        customClass: { popup: 'swal-borrow-popup' }
+    });
+    <?php else: ?>
+    Swal.fire({
+        title: 'Borrow This Book?',
+        html: '<div style="text-align:left;font-size:14px;line-height:1.8;padding:4px 0;">' +
+              '<div style="background:rgba(212,139,113,0.08);border-radius:12px;padding:14px 16px;margin-bottom:16px;">' +
+              '<div style="font-weight:700;margin-bottom:4px;color:#d48b71;"><i class="fas fa-info-circle me-1"></i> Borrowing Policy</div>' +
+              '<div style="color:#6b7280;">Return within <strong>14 days</strong>. Late returns incur <strong>500 Ks/day</strong> penalty.</div>' +
+              '</div>' +
+              '<div style="display:flex;flex-direction:column;gap:6px;">' +
+              '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
+              '<div><i class="fas fa-calendar-day me-2" style="color:#10b981;width:18px;"></i><strong>Duration:</strong> 14 Days</div>' +
+              '<div><i class="fas fa-clock me-2" style="color:#f59e0b;width:18px;"></i><strong>Due Date:</strong> <?= date("M j, Y", strtotime("+14 days")) ?></div>' +
+              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Unreturned:</strong> <?= $unreturnedBooksCount ?> / 3</div>' +
+              '</div>' +
+              '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +
+              '<i class="fas fa-shield-alt me-1"></i> Your request will be reviewed and approved by our admin team.' +
+              '</div>' +
+              '</div>',
+        icon: 'question',
+        iconColor: '#d48b71',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-check me-1"></i> Confirm & Borrow',
+        cancelButtonText: 'Maybe Later',
+        confirmButtonColor: '#d48b71',
+        cancelButtonColor: '#9ca3af',
+        reverseButtons: true,
+        customClass: { popup: 'swal-borrow-popup', confirmButton: 'swal-confirm-btn' },
+        showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById('borrowForm').submit();
+        }
+    });
+    <?php endif; ?>
+}
+
+// ─── Show borrow result alert on page load ───
+<?php if ($message && ($action ?? '') === 'borrow'): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    Swal.fire({
+        icon: '<?= $messageType === "success" ? "success" : "error" ?>',
+        title: '<?= $messageType === "success" ? "Request Submitted!" : "Borrow Failed" ?>',
+        html: '<div style="font-size:15px;"><?= addslashes($message) ?></div>',
+        confirmButtonColor: '#d48b71',
+        confirmButtonText: 'OK',
+        showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
+    });
+});
+<?php endif; ?>
+
 // Share
 function shareBook(platform) {
     const url = encodeURIComponent(window.location.href);

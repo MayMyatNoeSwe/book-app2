@@ -336,3 +336,47 @@ body {
         padding: 1rem;
     }
 }
+
+/* Soft Button Variants */
+.btn-soft-primary {
+    background: rgba(78, 115, 223, 0.1);
+    color: #4e73df;
+    border: 1px solid rgba(78, 115, 223, 0.2);
+}
+
+.btn-soft-primary:hover {
+    background: rgba(78, 115, 223, 0.2);
+    color: #3a5ec8;
+}
+
+.btn-soft-secondary {
+    background: rgba(133, 135, 150, 0.1);
+    color: #858796;
+    border: 1px solid rgba(133, 135, 150, 0.2);
+}
+
+.btn-soft-secondary:hover {
+    background: rgba(133, 135, 150, 0.2);
+    color: #6e707e;
+}
+
+.btn-soft-danger {
+    background: rgba(231, 74, 59, 0.1);
+    color: #e74a3b;
+    border: 1px solid rgba(231, 74, 59, 0.2);
+}
+
+.btn-soft-danger:hover {
+    background: rgba(231, 74, 59, 0.2);
+    color: #c0392b;
+}
+
+.btn-icon-only {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+}
