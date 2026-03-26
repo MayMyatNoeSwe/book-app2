@@ -151,6 +151,8 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
     .bm-btn-reject:hover { background: #dc2626; transform: translateY(-1px); }
     .bm-btn-paid { background: #6366f1; color: #fff; }
     .bm-btn-paid:hover { background: #4f46e5; }
+    .fee-breakdown { min-width: 140px; background: #f8fafc; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .smaller { font-size: 12px; }
     .bm-btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
     .bm-btn-outline:hover { border-color: #94a3b8; color: #1e293b; }
 
@@ -271,7 +273,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                             <th>Requested</th>
                             <th>Due Date</th>
                             <th>Status</th>
-                            <th>Penalty</th>
+                            <th>Fees</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -327,19 +329,29 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                     <span class="bm-status <?= $r['status'] ?>"><i class="fas <?= $icon ?>"></i> <?= ucfirst(str_replace('_', ' ', $r['status'])) ?></span>
                                 <?php endif; ?>
                             </td>
-                            <td>
-                                <?php if ($r['calculated_penalty'] > 0 || ($r['penalty_fee'] ?? 0) > 0): ?>
-                                    <?php $fee = max($r['calculated_penalty'], $r['penalty_fee'] ?? 0); ?>
-                                    <div class="bm-penalty-box <?= ($r['penalty_paid'] ?? 0) ? 'paid' : '' ?>">
-                                        <i class="fas <?= ($r['penalty_paid'] ?? 0) ? 'fa-check-circle' : 'fa-coins' ?>"></i>
-                                        <?= number_format($fee) ?> Ks
-                                        <?php if ($r['penalty_paid'] ?? 0): ?>
-                                            <span style="font-size:10px;opacity:0.8;"> (Paid)</span>
-                                        <?php endif; ?>
+                             <td class="px-4">
+                                <div class="fee-breakdown">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="text-muted smallest fw-700">Borrow:</span>
+                                        <span class="fw-800 text-dark smaller"><?= number_format($r['borrow_price']) ?> Ks</span>
                                     </div>
-                                <?php else: ?>
-                                    <span class="text-muted" style="font-size:12px;">—</span>
-                                <?php endif; ?>
+                                    <?php 
+                                    $penalty = max($r['calculated_penalty'], $r['penalty_fee'] ?? 0);
+                                    if ($penalty > 0): 
+                                    ?>
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="text-muted smallest fw-700">Penalty:</span>
+                                            <span class="fw-800 text-danger smaller"><?= number_format($penalty) ?> Ks</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="border-top pt-1 mt-1 d-flex justify-content-between">
+                                        <span class="text-dark smallest fw-800">Total:</span>
+                                        <span class="fw-900 text-primary smaller"><?= number_format($r['borrow_price'] + $penalty) ?> Ks</span>
+                                    </div>
+                                    <?php if ($penalty > 0 && ($r['penalty_paid'] ?? 0)): ?>
+                                        <div class="text-success smallest fw-800 mt-1"><i class="fas fa-check-circle me-1"></i>Penalty Paid</div>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
@@ -348,7 +360,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                             <input type="hidden" name="action" value="approve_borrow">
                                             <input type="hidden" name="borrow_id" value="<?= $r['id'] ?>">
                                             <input type="hidden" name="current_tab" value="<?= $currentTab ?>">
-                                            <button type="button" class="bm-btn bm-btn-approve" onclick="confirmApproveBorrow(<?= $r['id'] ?>)">
+                                            <button type="button" class="bm-btn bm-btn-approve" onclick="confirmApproveBorrow('<?= $r['id'] ?>')">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                         </form>
@@ -356,14 +368,23 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                             <i class="fas fa-times"></i> Reject
                                         </button>
                                     <?php elseif ($r['status'] === 'return_pending'): ?>
-                                        <form method="POST" id="approveReturnForm_<?= $r['id'] ?>" style="display:inline;">
-                                            <input type="hidden" name="action" value="approve_return">
-                                            <input type="hidden" name="borrow_id" value="<?= $r['id'] ?>">
-                                            <input type="hidden" name="current_tab" value="<?= $currentTab ?>">
-                                            <button type="button" class="bm-btn bm-btn-approve" onclick="confirmApproveReturn(<?= $r['id'] ?>, <?= $r['calculated_penalty'] ?>)">
-                                                <i class="fas fa-check"></i> Approve Return
-                                            </button>
-                                        </form>
+                                        <div class="d-flex flex-column gap-1">
+                                            <?php if ($r['return_screenshot']): ?>
+                                                <button type="button" class="bm-btn bm-btn-outline" 
+                                                        onclick="viewPayment('<?= $r['return_payment_method'] ?>', '<?= $r['return_screenshot'] ?>')">
+                                                    <i class="fas fa-receipt"></i> View Payment
+                                                </button>
+                                            <?php endif; ?>
+                                            <form method="POST" id="approveReturnForm_<?= $r['id'] ?>" style="display:inline;">
+                                                <input type="hidden" name="action" value="approve_return">
+                                                <input type="hidden" name="borrow_id" value="<?= $r['id'] ?>">
+                                                <input type="hidden" name="current_tab" value="<?= $currentTab ?>">
+                                                <button type="button" class="bm-btn bm-btn-approve w-100" 
+                                                        onclick="confirmApproveReturn('<?= $r['id'] ?>', <?= (float)$r['calculated_penalty'] ?>)">
+                                                    <i class="fas fa-check"></i> Approve Return
+                                                </button>
+                                            </form>
+                                        </div>
                                     <?php elseif ($r['status'] === 'returned' && ($r['penalty_fee'] ?? 0) > 0 && !($r['penalty_paid'] ?? 0)): ?>
                                         <form method="POST" id="markPaidForm_<?= $r['id'] ?>" style="display:inline;">
                                             <input type="hidden" name="action" value="mark_paid">
@@ -387,6 +408,27 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
     </div>
 </div>
 
+<!-- View Payment Modal -->
+<div class="modal fade" id="viewPaymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-800">Payment Verification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <span class="text-muted smallest fw-700 text-uppercase">Method:</span>
+                    <span id="view_pay_method" class="fw-800 text-primary ms-2"></span>
+                </div>
+                <div class="rounded-4 overflow-hidden border bg-light">
+                    <img id="view_pay_ss" src="" class="img-fluid d-block mx-auto" style="max-height:500px;">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Reject Modal via SweetAlert2 -->
 <form method="POST" id="rejectForm" style="display:none;">
     <input type="hidden" name="action" value="reject_borrow">
@@ -396,7 +438,9 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
 </form>
 
 <script>
-function confirmApproveBorrow(borrowId) {
+// Bind functions to window to ensure global availability even within complex renders
+window.confirmApproveBorrow = function(borrowId) {
+    console.log("Approving borrow:", borrowId);
     Swal.fire({
         title: 'Approve Borrow Request?',
         text: "User will be notified and copies will be deducted.",
@@ -408,12 +452,15 @@ function confirmApproveBorrow(borrowId) {
         reverseButtons: true
     }).then((result) => {
         if (result.isConfirmed) {
-            document.getElementById('approveBorrowForm_' + borrowId).submit();
+            const form = document.getElementById('approveBorrowForm_' + borrowId);
+            if (form) form.submit();
+            else console.error("Form not found:", 'approveBorrowForm_' + borrowId);
         }
     });
-}
+};
 
-function confirmApproveReturn(borrowId, penalty) {
+window.confirmApproveReturn = function(borrowId, penalty) {
+    console.log("Approving return:", borrowId, "Penalty:", penalty);
     let text = "Book will be returned to stock.";
     if (penalty > 0) {
         text += " A penalty of " + penalty.toLocaleString() + " Ks will be recorded.";
@@ -430,12 +477,14 @@ function confirmApproveReturn(borrowId, penalty) {
         reverseButtons: true
     }).then((result) => {
         if (result.isConfirmed) {
-            document.getElementById('approveReturnForm_' + borrowId).submit();
+            const form = document.getElementById('approveReturnForm_' + borrowId);
+            if (form) form.submit();
+            else console.error("Form not found:", 'approveReturnForm_' + borrowId);
         }
     });
-}
+};
 
-function confirmMarkPaid(borrowId) {
+window.confirmMarkPaid = function(borrowId) {
     Swal.fire({
         title: 'Mark Penalty as Paid?',
         text: "This action cannot be undone.",
@@ -447,12 +496,14 @@ function confirmMarkPaid(borrowId) {
         reverseButtons: true
     }).then((result) => {
         if (result.isConfirmed) {
-            document.getElementById('markPaidForm_' + borrowId).submit();
+            const form = document.getElementById('markPaidForm_' + borrowId);
+            if (form) form.submit();
+            else console.error("Form not found:", 'markPaidForm_' + borrowId);
         }
     });
-}
+};
 
-function rejectBorrow(borrowId) {
+window.rejectBorrow = function(borrowId) {
     Swal.fire({
         title: 'Reject Borrow Request',
         input: 'textarea',
@@ -473,7 +524,14 @@ function rejectBorrow(borrowId) {
             document.getElementById('rejectForm').submit();
         }
     });
-}
+};
+
+window.viewPayment = function(method, screenshot) {
+    document.getElementById('view_pay_method').textContent = method;
+    document.getElementById('view_pay_ss').src = '../' + screenshot;
+    const myModal = new bootstrap.Modal(document.getElementById('viewPaymentModal'));
+    myModal.show();
+};
 </script>
 
 <?php

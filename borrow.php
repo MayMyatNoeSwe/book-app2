@@ -24,10 +24,23 @@ $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options'
 // Handle Return Action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'return') {
     $bookId = $_POST['book_id'] ?? '';
-    if ($library->returnBook($bookId, $userId)) {
+    $paymentMethod = $_POST['payment_method'] ?? 'manual';
+    
+    $screenshotPath = null;
+    if (isset($_FILES['screenshot']) && $_FILES['screenshot']['error'] === 0) {
+        $ext = pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION);
+        $fileName = 'return_' . $userId . '_' . time() . '.' . $ext;
+        $uploadDir = 'assets/uploads/payments/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+        if (move_uploaded_file($_FILES['screenshot']['tmp_name'], $uploadDir . $fileName)) {
+            $screenshotPath = $uploadDir . $fileName;
+        }
+    }
+
+    if ($library->returnBook($bookId, $userId, ['method' => $paymentMethod, 'screenshot' => $screenshotPath])) {
         $_SESSION['success_msg'] = "Return request submitted! Waiting for admin approval.";
     } else {
-        $_SESSION['error_msg'] = "Failed to submit return request. You may not be borrowing it.";
+        $_SESSION['error_msg'] = "Failed to submit return request.";
     }
     header('Location: borrow.php');
     exit;
@@ -46,10 +59,10 @@ $pendingBorrows = $stmtPending->fetchAll();
 
 // Fetch Active Borrows (approved)
 $stmtActive = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image, b.category 
+    SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price 
     FROM borrowing_history bh
     JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.`status` IN ('approved', 'return_pending')
+    WHERE bh.user_id = ? AND bh.`status` IN ('approved', 'return_pending') AND bh.returned_at IS NULL
     ORDER BY bh.borrowed_at DESC
 ");
 $stmtActive->execute([$userId]);
@@ -57,10 +70,10 @@ $activeBorrows = $stmtActive->fetchAll();
 
 // Fetch Past Borrows (returned + rejected)
 $stmtPast = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image, b.category 
+    SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price 
     FROM borrowing_history bh
     JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.`status` IN ('returned', 'rejected')
+    WHERE bh.user_id = ? AND (bh.`status` IN ('returned', 'rejected') OR bh.returned_at IS NOT NULL)
     ORDER BY COALESCE(bh.returned_at, bh.borrowed_at) DESC
 ");
 $stmtPast->execute([$userId]);
@@ -268,27 +281,37 @@ include 'views/header.php';
                                             <i class="far fa-calendar"></i> Due: <?= date('M j, Y', strtotime($b['due_date'])) ?>
                                         </div>
 
-                                        <?php if ($isOverdue): 
-                                            $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
-                                            $penalty = $overdueDays * 500;
-                                        ?>
-                                            <div class="mt-2" style="font-size:11px; font-weight:700; color:#ef4444;">
-                                                <i class="fas fa-coins me-1"></i> Penalty: <?= number_format($penalty) ?> Ks
+                                         <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <span class="text-muted">Borrow Fee:</span>
+                                                <span class="fw-bold"><?= number_format($b['borrow_price']) ?> Ks</span>
                                             </div>
-                                        <?php endif; ?>
+                                            <?php 
+                                            $p = 0;
+                                            if ($isOverdue): 
+                                                $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
+                                                $p = $overdueDays * 500;
+                                            ?>
+                                                <div class="d-flex justify-content-between text-danger mb-1">
+                                                    <span>Penalty:</span>
+                                                    <span class="fw-bold">+ <?= number_format($p) ?> Ks</span>
+                                                </div>
+                                            <?php endif; ?>
+                                            <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
+                                                <span class="fw-bold">Total:</span>
+                                                <span class="fw-bold"><?= number_format($b['borrow_price'] + $p) ?> Ks</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
                                     <?php if ($isReturnPending): ?>
                                         <div class="bw-btn-returned" style="border-style: solid;"><i class="fas fa-clock me-2"></i>Waiting Approval</div>
                                     <?php else: ?>
-                                        <form method="POST">
-                                            <input type="hidden" name="action" value="return">
-                                            <input type="hidden" name="book_id" value="<?= e($b['book_id']) ?>">
-                                            <button type="button" class="bw-btn-return" onclick="confirmReturn(this)">
-                                                <i class="fas fa-box"></i> Return Book
-                                            </button>
-                                        </form>
+                                        <button type="button" class="bw-btn-return" 
+                                                onclick="initiateReturn('<?= e($b['book_id']) ?>', '<?= e($b['title']) ?>', <?= $b['borrow_price'] + $p ?>)">
+                                            <i class="fas fa-box"></i> Return Book
+                                        </button>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -374,13 +397,28 @@ include 'views/header.php';
                                             <?php endif; ?>
                                         </div>
 
-                                        <?php if (($b['penalty_fee'] ?? 0) > 0): ?>
-                                            <div class="mt-2 p-2 rounded <?php echo ($b['penalty_paid'] ?? 0) ? 'bg-light text-success' : 'bg-danger-subtle text-danger'; ?>" style="font-size:11px; font-weight:700;">
-                                                <i class="fas <?= ($b['penalty_paid'] ?? 0) ? 'fa-check-circle' : 'fa-coins' ?> me-1"></i> 
-                                                Penalty: <?= number_format($b['penalty_fee']) ?> Ks
-                                                <?= ($b['penalty_paid'] ?? 0) ? ' (Paid)' : ' (Unpaid)' ?>
+                                         <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <span class="text-muted">Borrow Fee:</span>
+                                                <span class="fw-bold"><?= number_format($b['borrow_price']) ?> Ks</span>
                                             </div>
-                                        <?php endif; ?>
+                                            <?php if (($b['penalty_fee'] ?? 0) > 0 || ($isOverdue ?? false)): 
+                                                $p = max($b['penalty_fee'] ?? 0, $penalty ?? 0);
+                                                if ($p > 0):
+                                            ?>
+                                                <div class="d-flex justify-content-between text-danger mb-1">
+                                                    <span>Penalty:</span>
+                                                    <span class="fw-bold">+ <?= number_format($p) ?> Ks</span>
+                                                </div>
+                                            <?php endif; endif; ?>
+                                            <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
+                                                <span class="fw-bold">Total:</span>
+                                                <span class="fw-bold"><?= number_format($b['borrow_price'] + ($p ?? 0)) ?> Ks</span>
+                                            </div>
+                                            <?php if (($b['penalty_fee'] ?? 0) > 0 && ($b['penalty_paid'] ?? 0)): ?>
+                                                <div class="text-success mt-1 fw-bold"><i class="fas fa-check-circle"></i> Paid</div>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
@@ -401,21 +439,134 @@ include 'views/header.php';
     </div>
 </div>
 
+<!-- Payment Return Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:24px; overflow:hidden;">
+            <div class="modal-header border-0 bg-primary text-white p-4">
+                <h5 class="modal-title fw-800"><i class="fas fa-wallet me-2"></i>Finalize Return</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="borrow.php" method="POST" enctype="multipart/form-data">
+                <div class="modal-body p-4">
+                    <input type="hidden" name="action" value="return">
+                    <input type="hidden" name="book_id" id="modal_book_id">
+                    
+                    <div class="text-center mb-4">
+                        <div class="text-muted smaller fw-700 text-uppercase mb-1">Book to Return</div>
+                        <h4 class="fw-800 text-dark mb-3" id="modal_book_title">—</h4>
+                        <div class="d-inline-block py-2 px-4 bg-primary-subtle text-primary rounded-pill fw-900" style="font-size:18px;">
+                            <span id="modal_total_amount">0</span> Ks
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-800 text-muted smaller text-uppercase">1. Choose Payment Method</label>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <input type="radio" class="btn-check" name="payment_method" id="pay_wave" value="WavePay" checked onclick="updateQR('WavePay')">
+                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_wave">
+                                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_LqI0S2I0m4hQj5vY5PzN4Y3F5G8p7y9-vA&s" class="d-block mx-auto mb-2 rounded-2" width="30">
+                                    <span style="font-size:10px;">Wave</span>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <input type="radio" class="btn-check" name="payment_method" id="pay_kpay" value="KPay" onclick="updateQR('KPay')">
+                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_kpay">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/0e/KPAY_logo.png" class="d-block mx-auto mb-2" width="30">
+                                    <span style="font-size:10px;">KPay</span>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <input type="radio" class="btn-check" name="payment_method" id="pay_kbz" value="KBZPay" onclick="updateQR('KBZPay')">
+                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_kbz">
+                                    <img src="https://play-lh.googleusercontent.com/yU4V_rY0U2_Pz_f-fG-_vW8GvT_9vU4V_rY0U2_Pz_f-fG-" class="d-block mx-auto mb-2" width="30">
+                                    <span style="font-size:10px;">KBZPay</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4 text-center p-3 rounded-4 bg-light shadow-inner" id="qr_section">
+                        <div class="text-muted smaller fw-700 text-uppercase mb-2">Scan to Pay</div>
+                        <img id="payment_qr" src="public/img/payments/wave_qr.png" class="img-fluid rounded-3 border bg-white p-2 shadow-sm" style="max-height: 180px;">
+                        <div class="mt-2 text-primary smaller fw-800" id="qr_label">WavePay Merchant</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-800 text-muted smaller text-uppercase">2. Upload Screenshot</label>
+                        <div class="p-3 border-dashed rounded-4 bg-light text-center pointer-cursor" onclick="document.getElementById('ss_input').click()">
+                            <input type="file" name="screenshot" id="ss_input" hidden accept="image/*" required onchange="previewScreenshot(this)">
+                            <div id="ss_preview" class="mb-2 d-none">
+                                <img src="" id="ss_img" class="img-fluid rounded-3 shadow-sm" style="max-height: 150px;">
+                            </div>
+                            <div id="ss_placeholder">
+                                <i class="fas fa-cloud-upload-alt text-primary fa-2x mb-2"></i>
+                                <div class="smaller fw-700 text-muted">Tap to upload transaction receipt</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-4 pt-0">
+                    <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 shadow-sm border-0" style="background:var(--bookhouse-orange);">
+                        Submit Return Request
+                    </button>
+                    <button type="button" class="btn btn-link text-muted fw-700 w-100 mt-2 text-decoration-none" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.border-dashed { border: 2px dashed #cbd5e1; transition: all 0.2s; }
+.border-dashed:hover { border-color: #3b82f6; background: #eff6ff !important; cursor: pointer; }
+.pointer-cursor { cursor: pointer; }
+</style>
+
 <script>
-function confirmReturn(buttonElement) {
-    Swal.fire({
-        title: 'Return this book?',
-        text: 'Are you ready to hand this back to the library?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#E07A5F',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, return it'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            buttonElement.closest('form').submit();
+function updateQR(method) {
+    const qrImg = document.getElementById('payment_qr');
+    const qrLabel = document.getElementById('qr_label');
+    
+    if (method === 'WavePay') {
+        qrImg.src = 'public/img/payments/wave_qr.png';
+        qrLabel.textContent = 'WavePay Merchant';
+    } else if (method === 'KPay') {
+        qrImg.src = 'public/img/payments/kpay_qr.png';
+        qrLabel.textContent = 'KPay Merchant';
+    } else if (method === 'KBZPay') {
+        qrImg.src = 'public/img/payments/kbzpay_qr.png';
+        qrLabel.textContent = 'KBZPay Merchant';
+    }
+}
+
+function initiateReturn(bookId, title, amount) {
+    document.getElementById('modal_book_id').value = bookId;
+    document.getElementById('modal_book_title').textContent = title;
+    document.getElementById('modal_total_amount').textContent = amount.toLocaleString();
+    
+    // Reset form
+    document.getElementById('ss_input').value = '';
+    document.getElementById('ss_preview').classList.add('d-none');
+    document.getElementById('ss_placeholder').classList.remove('d-none');
+    document.getElementById('pay_wave').click();
+    
+    // Show modal
+    const myModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+    myModal.show();
+}
+
+function previewScreenshot(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('ss_img').src = e.target.result;
+            document.getElementById('ss_preview').classList.remove('d-none');
+            document.getElementById('ss_placeholder').classList.add('d-none');
         }
-    });
+        reader.readAsDataURL(input.files[0]);
+    }
 }
 </script>
 
