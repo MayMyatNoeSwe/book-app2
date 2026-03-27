@@ -95,7 +95,7 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                     <p class="text-muted mb-4 fs-6 fw-500">You have 12 new notifications and 3 library requests pending. Let's get started.</p>
                     <div class="d-flex gap-2">
                         <a href="<?= baseUrl() ?>/admin/books.php" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">Manage Collection</a>
-                        <button class="btn btn-outline-secondary border rounded-pill px-4 fw-bold text-dark shadow-sm bg-white">View Analytics</button>
+                        <a href="<?= baseUrl() ?>/admin/accounting.php" class="btn btn-outline-secondary border rounded-pill px-4 fw-bold text-dark shadow-sm bg-white text-decoration-none">View Accounting</a>
                     </div>
                 </div>
                 <div class="col-lg-4 d-none d-lg-block text-end">

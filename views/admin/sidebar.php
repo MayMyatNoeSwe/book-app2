@@ -98,6 +98,12 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                     <span>Activity Log</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/accounting.php" class="nav-link <?= in_array($currentScript, ['accounting.php', 'expenses.php']) ? 'active' : '' ?>">
+                    <i class="fas fa-coins text-warning"></i>
+                    <span>Accounting</span>
+                </a>
+            </li>
         </ul>
 
         <div class="menu-label">PREMIUM TOOLS</div>

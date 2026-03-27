@@ -209,9 +209,13 @@ class Library
         if (!$book || !$book->borrowCopy()) return false;
 
         $dueDate = date('Y-m-d', strtotime('+' . $rules['days'] . ' days'));
-        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET `status` = 'approved', due_date = ?, approved_at = NOW() WHERE id = ?");
+        $stmt = $this->pdo->prepare("UPDATE borrowing_history SET status = 'approved', due_date = ?, approved_at = NOW() WHERE id = ?");
         $stmt->execute([$dueDate, $borrowId]);
         $this->updateBook($book);
+
+        // Record transaction
+        $this->addTransaction('income', 'borrow_fee', $book->getBorrowPrice(), "Borrow: {$book->getTitle()} by user #{$record['user_id']}", $borrowId, 'borrowing_history', $record['user_id']);
+
         return true;
     }
 
@@ -246,6 +250,12 @@ class Library
 
         $book->returnCopy();
         $this->updateBook($book);
+
+        // Record penalty if paid
+        if ($penalty > 0 && ($record['return_screenshot'] ?? null)) {
+            $this->addTransaction('income', 'penalty_fee', $penalty, "Overdue penalty for borrow #{$borrowId}", $borrowId, 'borrowing_history', $record['user_id']);
+        }
+
         return true;
     }
 
@@ -389,6 +399,13 @@ class Library
             // Mark request as approved
             $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved' WHERE id = ?");
             $stmt->execute([$requestId]);
+
+            // Record transaction
+            $prices = ['silver' => 10000, 'gold' => 25000, 'platinum' => 50000];
+            $amount = $prices[$request['tier']] ?? 0;
+            if ($amount > 0) {
+                $this->addTransaction('income', 'membership_fee', $amount, "Approved {$request['tier']} membership for user #" . $request['user_id'], $requestId, 'membership_requests', $request['user_id']);
+            }
 
             $this->pdo->commit();
             return true;
@@ -1141,5 +1158,329 @@ class Library
             }
         }
         return $books;
+    }
+
+    // ======================== Accounting Management ========================
+
+    public function addTransaction(string $type, string $category, float $amount, ?string $description, ?string $refId = null, ?string $refTable = null, ?int $userId = null): bool
+    {
+        $sql = "INSERT INTO transactions (type, category, amount, description, reference_id, reference_table, user_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$type, $category, $amount, $description, $refId, $refTable, $userId]);
+    }
+
+    public function addExpense(string $title, float $amount, string $category, ?string $description, string $date): bool
+    {
+        try {
+            $this->pdo->beginTransaction();
+            $stmt = $this->pdo->prepare("INSERT INTO expenses (title, amount, category, description, date) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$title, $amount, $category, $description, $date]);
+            $expenseId = $this->pdo->lastInsertId();
+
+            $this->addTransaction('expense', 'expense', $amount, "Expense: {$title} ({$category})", $expenseId, 'expenses');
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            return false;
+        }
+    }
+
+    public function deleteExpense(int $id): bool
+    {
+        try {
+            $this->pdo->beginTransaction();
+            $stmt = $this->pdo->prepare("DELETE FROM transactions WHERE reference_id = ? AND reference_table = 'expenses'");
+            $stmt->execute([$id]);
+            
+            $stmt = $this->pdo->prepare("DELETE FROM expenses WHERE id = ?");
+            $stmt->execute([$id]);
+            
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            return false;
+        }
+    }
+
+    public function getExpenses(array $filters = [], int $limit = 50, int $offset = 0): array
+    {
+        $sql = "SELECT * FROM expenses WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (title LIKE ? OR description LIKE ?)";
+            $params[] = "%{$filters['search']}%";
+            $params[] = "%{$filters['search']}%";
+        }
+
+        if (!empty($filters['category'])) {
+            $sql .= " AND category = ?";
+            $params[] = $filters['category'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $sql .= " AND date >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $sql .= " AND date <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        $sort = $filters['sort'] ?? 'newest';
+        switch ($sort) {
+            case 'oldest': $sql .= " ORDER BY date ASC, created_at ASC"; break;
+            case 'amount_high': $sql .= " ORDER BY amount DESC"; break;
+            case 'amount_low': $sql .= " ORDER BY amount ASC"; break;
+            default: $sql .= " ORDER BY date DESC, created_at DESC"; break;
+        }
+
+        $sql .= " LIMIT ? OFFSET ?";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $i = 1;
+        foreach ($params as $p) $stmt->bindValue($i++, $p);
+        $stmt->bindValue($i++, (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue($i++, (int)$offset, \PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function countExpenses(array $filters = []): int
+    {
+        $sql = "SELECT COUNT(*) FROM expenses WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (title LIKE ? OR description LIKE ?)";
+            $params[] = "%{$filters['search']}%";
+            $params[] = "%{$filters['search']}%";
+        }
+
+        if (!empty($filters['category'])) {
+            $sql .= " AND category = ?";
+            $params[] = $filters['category'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $sql .= " AND date >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $sql .= " AND date <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getTransactions(array $filters = [], int $limit = 100, int $offset = 0): array
+    {
+        $sql = "SELECT t.*, u.username FROM transactions t LEFT JOIN users u ON t.user_id = u.id WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (t.description LIKE ? OR u.username LIKE ?)";
+            $params[] = "%{$filters['search']}%";
+            $params[] = "%{$filters['search']}%";
+        }
+
+        if (!empty($filters['category'])) {
+            $sql .= " AND t.category = ?";
+            $params[] = $filters['category'];
+        }
+
+        if (!empty($filters['type'])) {
+            $sql .= " AND t.type = ?";
+            $params[] = $filters['type'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $sql .= " AND DATE(t.created_at) >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $sql .= " AND DATE(t.created_at) <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        $sort = $filters['sort'] ?? 'newest';
+        switch ($sort) {
+            case 'oldest': $sql .= " ORDER BY t.created_at ASC"; break;
+            case 'amount_high': $sql .= " ORDER BY t.amount DESC"; break;
+            case 'amount_low': $sql .= " ORDER BY t.amount ASC"; break;
+            default: $sql .= " ORDER BY t.created_at DESC"; break;
+        }
+
+        $sql .= " LIMIT ? OFFSET ?";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $i = 1;
+        foreach ($params as $p) $stmt->bindValue($i++, $p);
+        $stmt->bindValue($i++, (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue($i++, (int)$offset, \PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function countTransactions(array $filters = []): int
+    {
+        $sql = "SELECT COUNT(*) FROM transactions t LEFT JOIN users u ON t.user_id = u.id WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (t.description LIKE ? OR u.username LIKE ?)";
+            $params[] = "%{$filters['search']}%";
+            $params[] = "%{$filters['search']}%";
+        }
+
+        if (!empty($filters['category'])) {
+            $sql .= " AND t.category = ?";
+            $params[] = $filters['category'];
+        }
+
+        if (!empty($filters['type'])) {
+            $sql .= " AND t.type = ?";
+            $params[] = $filters['type'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $sql .= " AND DATE(t.created_at) >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $sql .= " AND DATE(t.created_at) <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getAccountingStats(): array
+    {
+        $stats = [];
+        // Income by category
+        $stmt = $this->pdo->query("SELECT category, SUM(amount) as total FROM transactions WHERE type = 'income' GROUP BY category");
+        $stats['income_by_category'] = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+        // Core stats
+        $stats['total_income'] = (float)$this->pdo->query("SELECT SUM(amount) FROM transactions WHERE type = 'income'")->fetchColumn();
+        $stats['total_expense'] = (float)$this->pdo->query("SELECT SUM(amount) FROM transactions WHERE type = 'expense'")->fetchColumn();
+        $stats['total_profit'] = $stats['total_income'] - $stats['total_expense'];
+
+        // Detailed Stats - Sales
+        $stats['sales_detailed'] = $this->getSalesStats();
+
+        // Detailed Stats - Borrows
+        $stats['borrow_detailed'] = $this->getBorrowStats();
+
+        // Detailed Stats - Memberships
+        $stats['membership_detailed'] = $this->getMembershipStats();
+
+        // Last 12 months income/expense for charts
+        $sql = "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, 
+                       SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+                       SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+                FROM transactions 
+                WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+                GROUP BY month ORDER BY month ASC";
+        $stats['monthly_history'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $stats;
+    }
+
+    private function getSalesStats(): array
+    {
+        $stats = [];
+        // Sales over last 7 days
+        $sql = "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') as date, SUM(amount) as total 
+                FROM transactions WHERE category = 'sale' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) 
+                GROUP BY date ORDER BY date ASC";
+        $stats['last_7_days'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Top 5 books by sales revenue (joining transactions with order_items)
+        $sql = "SELECT b.title, SUM(oi.price * oi.quantity) as total 
+                FROM order_items oi 
+                JOIN books b ON oi.book_id = b.id 
+                JOIN orders o ON oi.order_id = o.id 
+                WHERE o.status = 'completed'
+                GROUP BY b.id ORDER BY total DESC LIMIT 5";
+        $stats['top_selling_books'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Average order value
+        $stats['avg_order_value'] = (float)$this->pdo->query("SELECT COALESCE(AVG(total_amount), 0) FROM orders WHERE status = 'completed'")->fetchColumn();
+        
+        return $stats;
+    }
+
+    private function getBorrowStats(): array
+    {
+        $stats = [];
+        // Borrow fees vs penalties
+        $sql = "SELECT category, SUM(amount) as total FROM transactions WHERE category IN ('borrow_fee', 'penalty_fee') GROUP BY category";
+        $stats['fee_distribution'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+        // Monthly borrow count
+        $sql = "SELECT DATE_FORMAT(borrowed_at, '%Y-%m') as month, COUNT(*) as count 
+                FROM borrowing_history 
+                WHERE borrowed_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+                GROUP BY month ORDER BY month ASC";
+        $stats['borrow_count_trend'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $stats;
+    }
+
+    private function getMembershipStats(): array
+    {
+        $stats = [];
+        // Income by tier
+        $sql = "SELECT tier, COUNT(*) as count, 
+                SUM(CASE 
+                    WHEN tier = 'silver' THEN 10000
+                    WHEN tier = 'gold' THEN 25000
+                    WHEN tier = 'platinum' THEN 50000
+                    ELSE 0
+                END) as revenue
+                FROM membership_requests WHERE status = 'approved' GROUP BY tier";
+        $stats['tier_distribution'] = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $stats;
+    }
+
+    public function updateOrderStatus(int $orderId, string $status): bool
+    {
+        try {
+            $this->pdo->beginTransaction();
+            $stmt = $this->pdo->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
+            if (!$stmt->execute([$status, $orderId])) {
+                throw new \Exception("Failed to update status");
+            }
+
+            if ($status === 'completed') {
+                $stmt = $this->pdo->prepare("SELECT * FROM orders WHERE id = ?");
+                $stmt->execute([$orderId]);
+                $order = $stmt->fetch();
+                if ($order) {
+                    $this->addTransaction('income', 'sale', $order['total_amount'], "Order #{$order['order_number']} completed", $orderId, 'orders', $order['user_id']);
+                }
+            }
+
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            return false;
+        }
     }
 }

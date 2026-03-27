@@ -17,8 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $orderId = (int)$_POST['order_id'];
     $newStatus = $_POST['status'];
     
-    $stmt = $pdo->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
-    if ($stmt->execute([$newStatus, $orderId])) {
+    if ($library->updateOrderStatus($orderId, $newStatus)) {
         $_SESSION['success_msg'] = "Order status updated to " . ucfirst($newStatus);
     } else {
         $_SESSION['error_msg'] = "Failed to update order status.";
