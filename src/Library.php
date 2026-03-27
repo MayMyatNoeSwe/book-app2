@@ -337,6 +337,75 @@ class Library
         return (int)$stmt->fetchColumn();
     }
 
+    // ====================== Membership Management =====================
+    public function countMembershipRequests(string $status = 'all'): int
+    {
+        $sql = "SELECT COUNT(*) FROM membership_requests";
+        $params = [];
+        if ($status !== 'all') {
+            $sql .= " WHERE status = ?";
+            $params[] = $status;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getMembershipRequests(string $status = 'all', int $limit = 50): array
+    {
+        $sql = "SELECT mr.*, u.username, u.email, u.membership_tier as current_tier 
+                FROM membership_requests mr
+                JOIN users u ON mr.user_id = u.id";
+        $params = [];
+        if ($status !== 'all') {
+            $sql .= " WHERE mr.status = ?";
+            $params[] = $status;
+        }
+        $sql .= " ORDER BY mr.created_at DESC LIMIT ?";
+        $params = array_merge($params, [(int)$limit]);
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    public function approveMembershipUpgrade(int $requestId): bool
+    {
+        try {
+            if (!$this->pdo->inTransaction()) {
+                $this->pdo->beginTransaction();
+            }
+
+            $stmt = $this->pdo->prepare("SELECT * FROM membership_requests WHERE id = ? AND status = 'pending'");
+            $stmt->execute([$requestId]);
+            $request = $stmt->fetch();
+
+            if (!$request) return false;
+
+            // Update user tier and set expiry to 1 month from now
+            $stmt = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = DATE_ADD(NOW(), INTERVAL 1 MONTH) WHERE id = ?");
+            $stmt->execute([$request['tier'], $request['user_id']]);
+
+            // Mark request as approved
+            $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved' WHERE id = ?");
+            $stmt->execute([$requestId]);
+
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return false;
+        }
+    }
+
+    public function rejectMembershipRequest(int $requestId, string $reason = ''): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'rejected', admin_note = ? WHERE id = ?");
+        return $stmt->execute([$reason, $requestId]);
+    }
+
     // Check if user has a pending borrow for a book
     public function hasPendingBorrow(int $userId, string $bookId): bool
     {

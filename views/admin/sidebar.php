@@ -64,6 +64,20 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                 </a>
             </li>
             <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/membership.php" class="nav-link <?= $currentScript === 'membership.php' ? 'active' : '' ?>">
+                    <i class="fas fa-gem"></i>
+                    <span>Membership</span>
+                    <?php
+                    try {
+                        $mPdo = (new \App\Library())->getPdo();
+                        $msPending = (int)$mPdo->query("SELECT COUNT(*) FROM membership_requests WHERE `status` = 'pending'")->fetchColumn();
+                        if ($msPending > 0):
+                    ?>
+                        <span class="badge bg-indigo rounded-pill ms-auto" style="font-size:10px; background:#6366f1 !important;"><?= $msPending ?></span>
+                    <?php endif; } catch(Exception $e) {} ?>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="<?= baseUrl() ?>/admin/messages.php" class="nav-link <?= $currentScript === 'messages.php' ? 'active' : '' ?>">
                     <i class="fas fa-envelope-open-text"></i>
                     <span>Messages</span>

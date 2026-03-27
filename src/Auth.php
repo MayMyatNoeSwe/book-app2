@@ -79,11 +79,31 @@ class Auth
     }
 
     /**
-     * Check if user is logged in
+     * Check if user is logged in and handle membership expiry
      */
     public static function check(): bool
     {
-        return isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
+        $isLoggedIn = isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
+        
+        if ($isLoggedIn && isset($_SESSION['user_id'])) {
+            // Check expiry intermittently (once per session or every hour) to avoid DB load
+            if (!isset($_SESSION['ms_expiry_checked']) || time() - $_SESSION['ms_expiry_checked'] > 3600) {
+                try {
+                    // Create a temporary PDO instance for static check
+                    $config = require dirname(__DIR__) . '/config/database.php';
+                    $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
+                    
+                    // Revert to bronze if expired
+                    $stmt = $pdo->prepare("UPDATE users SET membership_tier = 'bronze', membership_expires_at = NULL 
+                                         WHERE id = ? AND membership_expires_at < NOW() AND membership_tier != 'bronze'");
+                    $stmt->execute([$_SESSION['user_id']]);
+                    
+                    $_SESSION['ms_expiry_checked'] = time();
+                } catch (\Exception $e) {}
+            }
+        }
+        
+        return $isLoggedIn;
     }
 
     /**

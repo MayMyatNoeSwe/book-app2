@@ -127,6 +127,23 @@ include 'views/header.php';
 .btn-tier-primary:hover { filter: brightness(1.1); transform: translateY(-2px); }
 
 [data-bs-theme="dark"] .btn-tier-outline { background: rgba(255,255,255,0.05); color: #fff; border-color: rgba(255,255,255,0.1); }
+
+/* --- Payment Modal Styles --- */
+.pay-methods { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.pay-method-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px; border: 1.5px solid rgba(0,0,0,0.08); border-radius: 12px;
+    cursor: pointer; transition: all 0.2s; background: #fff;
+}
+.pay-method-item:hover { border-color: var(--bookhouse-orange); background: rgba(224,122,95,0.04); }
+.pay-method-item.selected { border-color: var(--bookhouse-orange); background: rgba(224,122,95,0.08); }
+.pay-method-info { display: flex; align-items: center; gap: 12px; font-weight: 700; color: var(--bookhouse-text); }
+.pay-method-icon { width: 40px; height: 40px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f8fafc; font-size: 20px; }
+.pay-method-item i.select-icon { color: var(--bookhouse-text-muted); font-size: 16px; }
+.pay-method-item.selected i.select-icon { color: var(--bookhouse-orange); }
+
+[data-bs-theme="dark"] .pay-method-item { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+[data-bs-theme="dark"] .pay-method-info { color: #fff; }
 </style>
 
 <section class="ms-hero">
@@ -138,9 +155,11 @@ include 'views/header.php';
 
 <div class="container pb-5">
     <div class="row g-4">
-        <?php foreach ($tiers as $key => $tier): 
+        <?php 
+        $currentTierPrice = $tiers[$currentTier]['price'] ?? 0;
+        foreach ($tiers as $key => $tier): 
             $isActive = ($currentTier === $key);
-            $isHigher = ($tier['price'] > 0); // Logic for upgradeability
+            $isUpgrade = ($tier['price'] > $currentTierPrice); 
         ?>
         <div class="col-lg-3 col-md-6">
             <div class="ms-card <?= $isActive ? 'active' : '' ?>">
@@ -169,11 +188,14 @@ include 'views/header.php';
 
                 <?php if ($isActive): ?>
                     <button class="btn btn-tier btn-tier-outline" disabled>Active Membership</button>
-                <?php else: ?>
-                    <button class="btn btn-tier <?= $isHigher ? 'btn-tier-primary' : 'btn-tier-outline' ?>" 
+                <?php elseif ($isUpgrade): ?>
+                    <button class="btn btn-tier btn-tier-primary" 
                             onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">
-                        <?= $isHigher ? 'Upgrade Now' : 'Join Membership' ?>
+                        Upgrade Now
                     </button>
+                <?php else: ?>
+                    <!-- Cannot join lower tiers if higher already active -->
+                    <button class="btn btn-tier btn-tier-outline" disabled style="opacity: 0.5;">Higher Tier Active</button>
                 <?php endif; ?>
             </div>
         </div>
@@ -183,46 +205,153 @@ include 'views/header.php';
 
 <script>
 function upgradeTier(tierKey, tierName, price) {
+    if (price === 0) {
+        confirmUpgrade(tierKey, tierName, 'Free');
+        return;
+    }
+
+    const priceFormatted = price.toLocaleString();
+
     Swal.fire({
-        title: 'Upgrade to ' + tierName + '?',
-        text: price > 0 ? 'This will cost ' + price.toLocaleString() + ' Ks per month.' : 'Do you want to switch to ' + tierName + ' membership?',
-        icon: 'question',
+        title: 'Upgrade to ' + tierName,
+        html: `
+            <div class="text-center mb-4">Select your preferred payment method:</div>
+            <div class="pay-methods">
+                <div class="pay-method-item selected" onclick="selectPay(this, 'kbz')">
+                    <div class="pay-method-info">
+                        <div class="pay-method-icon" style="background:#004692; color:#fff;"><i class="fas fa-wallet"></i></div>
+                        <span>KBZ Pay</span>
+                    </div>
+                    <i class="fas fa-check-circle select-icon"></i>
+                </div>
+                <div class="pay-method-item" onclick="selectPay(this, 'wave')">
+                    <div class="pay-method-info">
+                        <div class="pay-method-icon" style="background:#f9ce1d; color:#e11d48;"><i class="fas fa-mobile-alt"></i></div>
+                        <span>Wave Pay</span>
+                    </div>
+                    <i class="fas fa-circle select-icon opacity-25"></i>
+                </div>
+            </div>
+        `,
         showCancelButton: true,
         confirmButtonColor: '#E07A5F',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, Upgrade!',
-        reverseButtons: true
+        confirmButtonText: 'Next: Scan & Pay',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true,
     }).then((result) => {
         if (result.isConfirmed) {
-            Swal.fire({
-                title: 'Processing Upgrade...',
-                allowOutsideClick: false,
-                didOpen: () => { Swal.showLoading(); }
-            });
+            const method = document.querySelector('.pay-method-item.selected span').innerText;
+            showScanModal(tierKey, tierName, priceFormatted, method);
+        }
+    });
+}
 
-            fetch('api/membership_upgrade.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tier: tierKey })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Welcome to ' + tierName + '!',
-                        text: 'Your account has been upgraded successfully.',
-                        confirmButtonColor: '#E07A5F'
-                    }).then(() => {
-                        window.location.reload();
-                    });
-                } else {
-                    Swal.fire({ icon: 'error', title: 'Error', text: data.message });
-                }
-            })
-            .catch(err => {
-                Swal.fire({ icon: 'error', title: 'Error', text: 'Something went wrong. Please try again later.' });
+function selectPay(el, method) {
+    document.querySelectorAll('.pay-method-item').forEach(item => {
+        item.classList.remove('selected');
+        item.querySelector('.select-icon').className = 'fas fa-circle select-icon opacity-25';
+    });
+    el.classList.add('selected');
+    el.querySelector('.select-icon').className = 'fas fa-check-circle select-icon';
+}
+
+function showScanModal(tierKey, tierName, priceStr, method) {
+    const qrSrc = method === 'KBZ Pay' ? 'assets/img/qr/kbz_qr.png' : 'assets/img/qr/kbz_qr.png'; // Use same dummy for now
+
+    Swal.fire({
+        title: 'Scan to Pay: ' + priceStr + ' Ks',
+        html: `
+            <div class="text-center">
+                <p class="mb-3 text-muted">Please scan the QR code using your ${method} app and pay the amount.</p>
+                <div class="mx-auto border p-2 rounded mb-4" style="width:200px; height:200px; background:#f8fafc;">
+                    <img src="${qrSrc}" class="img-fluid" alt="Payment QR">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label d-block text-start fw-bold" style="font-size:13px;">Upload Screenshot (Payment Receipt)</label>
+                    <input type="file" id="pay-screenshot" class="form-control" accept="image/*">
+                </div>
+                <div class="alert alert-info py-2" style="font-size:12px;">
+                    <i class="fas fa-info-circle me-1"></i> Our admin will verify your payment within 1-2 hours.
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#E07A5F',
+        confirmButtonText: 'Submit Request',
+        reverseButtons: true,
+        preConfirm: () => {
+            const fileInput = document.getElementById('pay-screenshot');
+            if (fileInput.files.length === 0) {
+                Swal.showValidationMessage('Please upload a payment screenshot');
+                return false;
+            }
+            return fileInput.files[0];
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            submitMembershipRequest(tierKey, method, result.value);
+        }
+    });
+}
+
+function submitMembershipRequest(tier, method, file) {
+    Swal.fire({
+        title: 'Uploading Receipt...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+
+    const formData = new FormData();
+    formData.append('tier', tier);
+    formData.append('payment_method', method);
+    formData.append('screenshot', file);
+
+    fetch('api/membership_request.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Request Sent!',
+                text: data.message,
+                confirmButtonColor: '#E07A5F'
             });
+        } else {
+            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
+        }
+    })
+    .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Connection failed. Please try again.' });
+    });
+}
+
+// Keep the old confirmUpgrade for Free tiers
+function confirmUpgrade(tierKey, tierName) {
+    Swal.fire({
+        title: 'Processing...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+
+    fetch('api/membership_upgrade.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tierKey })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Welcome to ' + tierName + '!',
+                text: 'Your account has been upgraded.',
+                confirmButtonColor: '#E07A5F'
+            }).then(() => { window.location.reload(); });
+        } else {
+            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
         }
     });
 }
