@@ -41,6 +41,21 @@ $totalPages = ceil($totalBooks / $limit);
 $hasNextPage = $page < $totalPages;
 $hasPrevPage = $page > 1;
 
+// User Borrowing Stats for the Modal
+$hasBorrowedBefore = false;
+$unreturnedBooksCount = 0;
+if (Auth::check()) {
+    $userId = Auth::id();
+    $pdo = $library->getPdo();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    $hasBorrowedBefore = $stmt->fetchColumn() > 0;
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
+    $stmt->execute([$userId]);
+    $unreturnedBooksCount = $stmt->fetchColumn();
+}
+
 $pageTitle = $authorName . " - Author Details";
 
 // Author avatar
@@ -264,7 +279,21 @@ include 'views/header.php';
     border: none; cursor: pointer; width: 100%; transition: all 0.2s;
 }
 .ad-book-overlay .ad-ol-details { background: rgba(255,255,255,0.92); color: #3D405B; }
-.ad-book-overlay .ad-ol-borrow { background: var(--bookhouse-orange); color: #fff; margin-top: 6px; }
+.ad-book-overlay .ad-ol-borrow-btn { 
+    background: var(--bookhouse-orange); 
+    color: #fff; 
+    margin-top: 6px; 
+}
+.ad-book-overlay .ad-ol-borrow { 
+    background: transparent; 
+    color: #fff; 
+    border: 1px solid rgba(255,255,255,0.6) !important;
+    margin-top: 6px; 
+}
+.ad-book-overlay .ad-ol-borrow:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: #fff !important;
+}
 .ad-book-body {
     padding: 14px 14px 16px; flex: 1;
     display: flex; flex-direction: column;
@@ -514,7 +543,14 @@ include 'views/header.php';
                         <img src="<?= $coverUrl ?>" alt="<?= e($book->getTitle()) ?>" loading="lazy" onerror="this.src='<?= $fallback ?>'">
                         <div class="ad-book-overlay">
                             <a href="book-details.php?id=<?= e($book->getId()) ?>" class="ad-ol-details">View Details</a>
-                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d;' : '' ?>">
+                            <?php if (!($book instanceof \App\EBook) && $book->isAvailable()): ?>
+                                <?php if (!Auth::check() || !$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                                <button class="ad-ol-borrow-btn" onclick="quickBorrow('<?= e($book->getId()) ?>')">
+                                    <i class="fas fa-plus me-1"></i> Borrow
+                                </button>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d; border-color:#524f7d!important;' : '' ?>">
                                 <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i>
                                 <?= $book->isAvailable() ? 'Add to Cart' : 'Pre-order' ?>
                             </button>
@@ -565,7 +601,14 @@ include 'views/header.php';
                         <img src="<?= $coverUrl ?>" alt="<?= e($book->getTitle()) ?>" loading="lazy" onerror="this.src='<?= $fallback ?>'">
                         <div class="ad-book-overlay">
                             <a href="book-details.php?id=<?= e($book->getId()) ?>" class="ad-ol-details">View Details</a>
-                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d;' : '' ?>">
+                            <?php if (!($book instanceof \App\EBook) && $book->isAvailable()): ?>
+                                <?php if (!Auth::check() || !$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                                <button class="ad-ol-borrow-btn" onclick="quickBorrow('<?= e($book->getId()) ?>')">
+                                    <i class="fas fa-plus me-1"></i> Borrow
+                                </button>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <button class="ad-ol-borrow" onclick="addToCart('<?= e($book->getId()) ?>')" style="<?= !$book->isAvailable() ? 'background:#524f7d; border-color:#524f7d!important;' : '' ?>">
                                 <i class="fas <?= $book->isAvailable() ? 'fa-shopping-cart' : 'fa-calendar-check' ?> me-1"></i>
                                 <?= $book->isAvailable() ? 'Add to Cart' : 'Pre-order' ?>
                             </button>
@@ -635,7 +678,112 @@ function buildAuthorUrl($newParams = []) {
 }
 ?>
 
+<!-- Quick Borrow Modal -->
+<div class="modal fade bl-modal" id="quickBorrowModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center shadow-lg">
+            <div class="modal-header text-white" style="background: linear-gradient(135deg, var(--bookhouse-orange), #c2664e);">
+                <div class="d-flex align-items-center gap-3">
+                    <div style="width:44px;height:44px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                        <i class="fas fa-bookmark fs-5"></i>
+                    </div>
+                    <div class="text-start">
+                        <h5 class="modal-title fw-800 mb-0">Borrow Confirmation</h5>
+                        <p class="mb-0 small opacity-75">You're one step away from your next read.</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-start">
+                <div class="p-3 rounded-4 border mb-3" style="background: rgba(224,122,95,0.04);">
+                    <div class="d-flex gap-3">
+                        <i class="fas fa-info-circle mt-1" style="color: var(--bookhouse-orange);"></i>
+                        <div>
+                            <h6 class="fw-800 mb-1" style="font-size:14px;">Borrowing Policy</h6>
+                            <p class="mb-0 small" style="color: var(--bookhouse-text-muted);">Return within 14 days. Late returns may incur a small fee.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Borrowing Details Section -->
+                <?php if (Auth::check()): ?>
+                <div class="p-3 rounded-4 border mb-4" style="background: #ffffff;">
+                    <h6 class="fw-800 mb-3" style="font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">Your Borrowing Summary</h6>
+                    <ul class="list-unstyled mb-0" style="font-size: 14px; color: var(--bookhouse-text); line-height: 1.8;">
+                        <li><i class="fas fa-calendar-day text-success me-2"></i><strong>Duration:</strong> 14 Days</li>
+                        <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
+                        <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
+                        <li>
+                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
+                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
+                            <?php if ($unreturnedBooksCount >= 3): ?>
+                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
+                            <?php elseif ($unreturnedBooksCount > 0): ?>
+                                <span class="text-danger small">(Please return on time)</span>
+                            <?php endif; ?>
+                        </li>
+                    </ul>
+                </div>
+                <?php endif; ?>
+
+                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+                    <p class="fw-700 text-center mb-0 text-danger" style="font-size: 16px;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</p>
+                <?php else: ?>
+                    <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer flex-column gap-2 text-center">
+                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
+                    <i class="fas fa-check me-2"></i>Confirm & Borrow
+                </button>
+                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?></button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+let currentBookId = null;
+function quickBorrow(bookId) {
+    <?php if (!Auth::check()): ?>
+        Swal.fire({
+            icon: 'info',
+            title: 'Login Required',
+            text: 'Please login to borrow this book.',
+            showCancelButton: true,
+            confirmButtonText: 'Login Now',
+            confirmButtonColor: '#E07A5F',
+            cancelButtonText: 'Later'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
+            }
+        });
+        return;
+    <?php endif; ?>
+    currentBookId = bookId;
+    new bootstrap.Modal(document.getElementById('quickBorrowModal')).show();
+}
+
+document.getElementById('confirmBorrow')?.addEventListener('click', function() {
+    if (currentBookId) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'book-details.php';
+        
+        [['id', currentBookId], ['action', 'borrow']].forEach(([name, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        });
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+});
+
 function shareAuthor(platform) {
     const url = encodeURIComponent(window.location.href);
     const title = encodeURIComponent('<?= addslashes($authorName) ?> - Author Profile');

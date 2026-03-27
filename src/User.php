@@ -55,13 +55,13 @@ class User
 
     public function getAllUsers(): array
     {
-        $stmt = $this->pdo->query("SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC");
+        $stmt = $this->pdo->query("SELECT id, username, email, role, membership_tier, membership_id, created_at FROM users ORDER BY created_at DESC");
         return $stmt->fetchAll();
     }
 
     public function getUserById(int $id): ?array
     {
-        $stmt = $this->pdo->prepare("SELECT id, username, email, role, created_at FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("SELECT id, username, email, role, membership_tier, membership_id, created_at FROM users WHERE id = ?");
         $stmt->execute([$id]);
         $user = $stmt->fetch();
         return $user ?: null;
@@ -71,6 +71,12 @@ class User
     {
         $stmt = $this->pdo->prepare("UPDATE users SET role = ? WHERE id = ?");
         return $stmt->execute([$role, $id]);
+    }
+
+    public function updateMembershipTier(int $id, string $tier): bool
+    {
+        $stmt = $this->pdo->prepare("UPDATE users SET membership_tier = ? WHERE id = ?");
+        return $stmt->execute([$tier, $id]);
     }
 
     public function deleteUser(int $id): bool

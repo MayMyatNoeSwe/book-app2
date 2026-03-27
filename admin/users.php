@@ -48,6 +48,7 @@ renderAdminLayout('User Access Management', function() use ($users) {
                     <thead>
                         <tr class="bg-lightest border-bottom">
                             <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Member</th>
+                            <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Membership Tier</th>
                             <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Authorization</th>
                             <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider">Registration</th>
                             <th class="py-3 px-4 border-0 text-muted smallest fw-800 text-uppercase tracking-wider text-end">Control</th>
@@ -66,6 +67,17 @@ renderAdminLayout('User Access Management', function() use ($users) {
                                 </div>
                             </td>
                             <td class="px-4 py-4">
+                                <span class="badge rounded-pill px-3 py-2 border smallest fw-800 text-uppercase tracking-wider 
+                                    <?= ($u['membership_tier'] ?? 'bronze') === 'bronze' ? 'bg-bronze-soft text-bronze border-bronze-subtle' : '' ?>
+                                    <?= ($u['membership_tier'] ?? 'silver') === 'silver' ? 'bg-silver-soft text-silver border-silver-subtle' : '' ?>
+                                    <?= ($u['membership_tier'] ?? 'gold') === 'gold' ? 'bg-gold-soft text-gold border-gold-subtle' : '' ?>
+                                    <?= ($u['membership_tier'] ?? 'platinum') === 'platinum' ? 'bg-platinum-soft text-platinum border-platinum-subtle' : '' ?>
+                                ">
+                                    <?= e($u['membership_tier'] ?? 'bronze') ?>
+                                </span>
+                                <div class="smallest text-muted mt-1 fw-bold"><?= e($u['membership_id'] ?? 'UNASSIGNED') ?></div>
+                            </td>
+                            <td class="px-4 py-4">
                                 <?php if($u['role'] === 'admin'): ?>
                                     <span class="badge bg-primary-soft text-primary rounded-pill px-3 py-2 border border-primary-subtle smallest fw-800">ADMINISTRATOR</span>
                                 <?php else: ?>
@@ -77,6 +89,9 @@ renderAdminLayout('User Access Management', function() use ($users) {
                             </td>
                             <td class="px-4 py-4 text-end">
                                 <div class="d-flex justify-content-end gap-2 px-1">
+                                    <button class="btn btn-icon-only rounded-pill btn-soft-warning change-tier" data-id="<?= $u['id'] ?>" data-tier="<?= $u['membership_tier'] ?>" title="Modify Tier">
+                                        <i class="fas fa-gem"></i>
+                                    </button>
                                     <button class="btn btn-icon-only rounded-pill btn-soft-primary change-role" data-id="<?= $u['id'] ?>" data-role="<?= $u['role'] ?>" title="Modify Access">
                                         <i class="fas fa-key"></i>
                                     </button>
@@ -94,14 +109,129 @@ renderAdminLayout('User Access Management', function() use ($users) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        .bg-bronze-soft { background-color: rgba(205, 127, 50, 0.1) !important; }
+        .text-bronze { color: #8b4513 !important; }
+        .border-bronze-subtle { border-color: rgba(205, 127, 50, 0.2) !important; }
+        
+        .bg-silver-soft { background-color: rgba(189, 195, 199, 0.2) !important; }
+        .text-silver { color: #7f8c8d !important; }
+        .border-silver-subtle { border-color: rgba(189, 195, 199, 0.3) !important; }
+        
+        .bg-gold-soft { background-color: rgba(241, 196, 15, 0.15) !important; }
+        .text-gold { color: #d4a017 !important; }
+        .border-gold-subtle { border-color: rgba(241, 196, 15, 0.25) !important; }
+        
+        .bg-platinum-soft { background-color: rgba(30, 41, 59, 0.1) !important; }
+        .text-platinum { color: #1e293b !important; }
+        .border-platinum-subtle { border-color: rgba(30, 41, 59, 0.2) !important; }
+        
+        .btn-soft-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+        .btn-soft-warning:hover { background: #f59e0b; color: #fff; }
+    </style>
     <script>
-    document.getElementById('userSearch').addEventListener('input', function(e) {
-        const val = e.target.value.toLowerCase();
-        const rows = document.querySelectorAll('#userTableBody tr');
-        rows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(val) ? '' : 'none';
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('userSearch');
+        if(searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const val = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#userTableBody tr');
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(val) ? '' : 'none';
+                });
+            });
+        }
+
+        // Tier Change
+        document.querySelectorAll('.change-tier').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const currentTier = this.dataset.tier;
+                
+                Swal.fire({
+                    title: 'Update Membership Tier',
+                    text: 'Select new tier for this member',
+                    icon: 'question',
+                    input: 'select',
+                    inputOptions: {
+                        'bronze': 'Bronze',
+                        'silver': 'Silver',
+                        'gold': 'Gold',
+                        'platinum': 'Platinum'
+                    },
+                    inputValue: currentTier,
+                    showCancelButton: true,
+                    confirmButtonText: 'Update Tier',
+                    confirmButtonColor: '#f59e0b'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        updateUserAction(id, 'update_tier', { tier: result.value });
+                    }
+                });
+            });
         });
+
+        // Role Change
+        document.querySelectorAll('.change-role').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const currentRole = this.dataset.role;
+                
+                Swal.fire({
+                    title: 'Modify System Access',
+                    text: 'Set authorization level for this member',
+                    icon: 'warning',
+                    input: 'select',
+                    inputOptions: { 'user': 'Standard User', 'admin': 'Administrator' },
+                    inputValue: currentRole,
+                    showCancelButton: true,
+                    confirmButtonText: 'Apply Role',
+                    confirmButtonColor: '#4e73df'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        updateUserAction(id, 'update_role', { role: result.value });
+                    }
+                });
+            });
+        });
+
+        // Delete Member
+        document.querySelectorAll('.delete-member').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = this.dataset.id;
+                Swal.fire({
+                    title: 'Revoke All Privileges?',
+                    text: 'This will permanently remove the member registration.',
+                    icon: 'error',
+                    showCancelButton: true,
+                    confirmButtonText: 'Revoke Now',
+                    confirmButtonColor: '#e74a3b'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        updateUserAction(id, 'delete_user');
+                    }
+                });
+            });
+        });
+
+        function updateUserAction(id, action, extra = {}) {
+            fetch('../api/admin_users.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action, ...extra })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    Swal.fire({ icon: 'success', title: 'Changes Saved', timer: 1500, showConfirmButton: false })
+                    .then(() => location.reload());
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Error', text: data.message });
+                }
+            })
+            .catch(err => Swal.fire({ icon: 'error', title: 'Network Error', text: 'Service unavailable' }));
+        }
     });
     </script>
     <?php

@@ -57,13 +57,18 @@ class OAuth
         $username = $this->generateUsername($name);
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO users (username, email, password, oauth_provider, oauth_id, avatar_url, email_verified, role, created_at)
-            VALUES (?, ?, '', ?, ?, ?, TRUE, 'user', NOW())
+            INSERT INTO users (username, email, password, oauth_provider, oauth_id, avatar_url, email_verified, role, membership_tier, created_at)
+            VALUES (?, ?, '', ?, ?, ?, TRUE, 'user', 'bronze', NOW())
         ");
         
         $stmt->execute([$username, $email, $provider, $oauthId, $avatarUrl]);
         
         $userId = $this->pdo->lastInsertId();
+        
+        // Generate Membership ID
+        $mid = 'LIB-' . str_pad($userId, 6, '0', STR_PAD_LEFT);
+        $stmt = $this->pdo->prepare("UPDATE users SET membership_id = ? WHERE id = ?");
+        $stmt->execute([$mid, $userId]);
 
         // Fetch and return the new user
         $stmt = $this->pdo->prepare("SELECT * FROM users WHERE id = ?");

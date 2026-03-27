@@ -43,8 +43,16 @@ class Auth
         $hash = password_hash($password, PASSWORD_DEFAULT);
 
         try {
-            $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)");
-            return $stmt->execute([$username, $email, $hash, $role]);
+            $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, role, membership_tier) VALUES (?, ?, ?, ?, 'bronze')");
+            $success = $stmt->execute([$username, $email, $hash, $role]);
+
+            if ($success) {
+                $lastId = $this->pdo->lastInsertId();
+                $mid = 'LIB-' . str_pad($lastId, 6, '0', STR_PAD_LEFT);
+                $stmt = $this->pdo->prepare("UPDATE users SET membership_id = ? WHERE id = ?");
+                $stmt->execute([$mid, $lastId]);
+            }
+            return $success;
         } catch (\PDOException $e) {
             // Duplicate username/email will throw exception
             return false;

@@ -220,7 +220,55 @@ include 'views/header.php';
 .ud-empty h6 { font-weight: 700; color: var(--bookhouse-text); margin-bottom: 6px; }
 .ud-empty p { font-size: 14px; color: var(--bookhouse-text-muted); margin: 0; }
 
+/* ─── Member Card System ─── */
+.member-card-wrap {
+    perspective: 1000px; margin-bottom: 40px;
+}
+.member-card {
+    position: relative; width: 100%; max-width: 480px; height: 260px;
+    border-radius: 24px; overflow: hidden;
+    padding: 30px; display: flex; flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    color: #fff; transform-style: preserve-3d;
+    transition: transform 0.3s; margin: 0 auto;
+}
+.member-card:hover { transform: translateY(-5px) rotateX(2deg) rotateY(-2deg); }
+
+.member-card.bronze   { background: linear-gradient(135deg, #cd7f32, #8b4513, #cd7f32); }
+.member-card.silver   { background: linear-gradient(135deg, #bdc3c7, #2c3e50, #bdc3c7); }
+.member-card.gold     { background: linear-gradient(135deg, #f1c40f, #f39c12, #f1c40f); }
+.member-card.platinum { background: linear-gradient(135deg, #1e293b, #334155, #1e293b); }
+
+.card-pattern {
+    position: absolute; inset: 0; opacity: 0.15;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    pointer-events: none;
+}
+.card-glass-shine {
+    position: absolute; top: -100%; left: -100%; width: 300%; height: 300%;
+    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.15) 55%, transparent 60%);
+    animation: shine 6s infinite linear; pointer-events: none;
+}
+@keyframes shine { 100% { transform: translate(30%, 30%); } }
+
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; }
+.card-logo { font-size: 24px; font-weight: 800; font-family: 'Playfair Display', serif; display: flex; align-items: center; gap: 10px; }
+.card-chip { width: 45px; height: 35px; background: linear-gradient(135deg, #ffd700, #b8860bc2); border-radius: 6px; box-shadow: inset 0 0 5px rgba(0,0,0,0.2); position: relative; }
+.card-chip::after { content: ''; position: absolute; inset: 6px; border: 1px solid rgba(0,0,0,0.1); border-radius: 2px; }
+
+.card-body { position: relative; z-index: 1; margin: 20px 0; }
+.card-number { font-family: 'Courier New', monospace; font-size: 22px; letter-spacing: 3px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+
+.card-footer { display: flex; justify-content: space-between; align-items: flex-end; z-index: 1; }
+.card-user-info .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; margin-bottom: 2px; }
+.card-user-info .val { font-size: 16px; font-weight: 700; text-transform: uppercase; }
+
+.card-barcode { background: #fff; padding: 5px; border-radius: 4px; height: 40px; display: flex; align-items: center; }
+
 @media (max-width: 767px) {
+    .member-card { height: 220px; padding: 20px; }
+    .card-number { font-size: 18px; }
     .ud-profile-card { flex-direction: column; text-align: center; gap: 20px; }
     .ud-info p { justify-content: center; }
     .ud-item-img { width: 50px; height: 68px; }
@@ -237,15 +285,77 @@ include 'views/header.php';
             </ol>
         </nav>
 
-        <div class="ud-profile-card">
-            <div class="ud-avatar">
-                <?= strtoupper(substr($user['username'] ?? 'User', 0, 1)) ?>
+        <div class="row align-items-center">
+            <div class="col-lg-7 mb-4 mb-lg-0">
+                <div class="ud-profile-card">
+                    <div class="ud-avatar">
+                        <?= strtoupper(substr($user['username'] ?? 'User', 0, 1)) ?>
+                    </div>
+                    <div class="ud-info">
+                        <h1><?= e($user['username']) ?></h1>
+                        <p><i class="fas fa-envelope text-muted"></i> <?= e($user['email']) ?></p>
+                        <div class="ud-badge">
+                            <i class="fas fa-shield-alt"></i> <?= strtoupper($user['role'] ?? 'USER') ?>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="ud-info">
-                <h1><?= e($user['username']) ?></h1>
-                <p><i class="fas fa-envelope text-muted"></i> <?= e($user['email']) ?></p>
-                <div class="ud-badge">
-                    <i class="fas fa-shield-alt"></i> <?= strtoupper($user['role'] ?? 'USER') ?>
+            <div class="col-lg-5">
+                <div class="member-card-wrap">
+                    <div class="member-card <?= e($user['membership_tier'] ?? 'bronze') ?>">
+                        <div class="card-pattern"></div>
+                        <div class="card-glass-shine"></div>
+                        
+                        <div class="card-header">
+                            <div class="card-logo">
+                                <i class="fas fa-book-reader"></i> Arctic Library
+                            </div>
+                            <div class="card-chip"></div>
+                        </div>
+
+                        <div class="card-body">
+                            <div class="card-number"><?= e($user['membership_id'] ?? 'LIB-000000') ?></div>
+                        </div>
+
+                        <div class="card-footer">
+                            <div class="card-user-info">
+                                <div class="lbl">Member Name</div>
+                                <div class="val"><?= e($user['username']) ?></div>
+                            </div>
+                            <div class="card-barcode">
+                                <svg width="120" height="30" viewBox="0 0 120 30" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="0" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="4" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="7" y="0" width="3" height="30" fill="#000" />
+                                    <rect x="12" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="15" y="0" width="4" height="30" fill="#000" />
+                                    <rect x="22" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="25" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="30" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="33" y="0" width="3" height="30" fill="#000" />
+                                    <rect x="38" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="42" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="46" y="0" width="4" height="30" fill="#000" />
+                                    <rect x="52" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="55" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="60" y="0" width="3" height="30" fill="#000" />
+                                    <rect x="65" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="68" y="0" width="4" height="30" fill="#000" />
+                                    <rect x="74" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="78" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="81" y="0" width="3" height="30" fill="#000" />
+                                    <rect x="86" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="90" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="94" y="0" width="4" height="30" fill="#000" />
+                                    <rect x="100" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="103" y="0" width="2" height="30" fill="#000" />
+                                    <rect x="108" y="0" width="3" height="30" fill="#000" />
+                                    <rect x="113" y="0" width="1" height="30" fill="#000" />
+                                    <rect x="116" y="0" width="4" height="30" fill="#000" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -421,6 +531,56 @@ include 'views/header.php';
                         </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
+                </div>
+
+                <!-- Membership Benefits -->
+                <h3 class="ud-section-title"><i class="fas fa-gem"></i> Tier Benefits</h3>
+                <div class="ud-card" style="background: linear-gradient(135deg, rgba(224,122,95,0.05), rgba(129,178,154,0.05));">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <div class="ud-stat-icon gold m-0" style="width:40px; height:40px;"><i class="fas fa-crown"></i></div>
+                        <div>
+                            <h6 class="mb-0 fw-800 text-capitalize"><?= e($user['membership_tier'] ?? 'bronze') ?> Status</h6>
+                            <p class="mb-0 small text-muted">Exclusive privileges for your tier</p>
+                        </div>
+                    </div>
+                    
+                    <ul class="list-unstyled mb-0" style="font-size:14px;">
+                        <li class="mb-2 d-flex gap-2">
+                            <i class="fas fa-check-circle text-success mt-1"></i>
+                            <div>
+                                <strong>Borrow Limit:</strong> 
+                                <?php if(($user['membership_tier'] ?? 'bronze') === 'gold'): ?> 5 Books
+                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> Unlimited
+                                <?php else: ?> 3 Books
+                                <?php endif; ?>
+                            </div>
+                        </li>
+                        <li class="mb-2 d-flex gap-2">
+                            <i class="fas fa-check-circle text-success mt-1"></i>
+                            <div>
+                                <strong>Duration:</strong> 14 Days
+                                <?php if(($user['membership_tier'] ?? 'bronze') !== 'bronze'): ?> (Extendable)<?php endif; ?>
+                            </div>
+                        </li>
+                        <li class="mb-2 d-flex gap-2">
+                            <i class="fas fa-check-circle text-success mt-1"></i>
+                            <div>
+                                <strong>Shopping:</strong> 
+                                <?php if(($user['membership_tier'] ?? 'bronze') === 'silver'): ?> 10% Discount
+                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'gold'): ?> 20% Discount
+                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> 25% Discount + Free Shipping
+                                <?php else: ?> Standard Pricing
+                                <?php endif; ?>
+                            </div>
+                        </li>
+                        <li class="d-flex gap-2">
+                            <i class="fas fa-check-circle text-success mt-1"></i>
+                            <div>
+                                <strong>Support:</strong> Standard
+                                <?php if(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> (Priority)<?php endif; ?>
+                            </div>
+                        </li>
+                    </ul>
                 </div>
 
             </div>
