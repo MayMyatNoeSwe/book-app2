@@ -234,7 +234,7 @@ renderAdminLayout('Sales Management', function() use ($orders, $currentTab, $pdo
                 </div>
                 <div class="modal-footer border-0 p-4 pt-0">
                     <button type="button" class="btn btn-light rounded-pill px-4 fw-bold" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" onclick="window.print()"><i class="fas fa-print me-2"></i>Print Invoice</button>
+                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" id="print_invoice_btn"><i class="fas fa-print me-2"></i>Print Invoice</button>
                 </div>
             </div>
         </div>
@@ -272,6 +272,11 @@ renderAdminLayout('Sales Management', function() use ($orders, $currentTab, $pdo
             `;
             listContainer.appendChild(row);
         });
+        
+        const printBtn = document.getElementById('print_invoice_btn');
+        printBtn.onclick = function() {
+            window.open('<?= baseUrl() ?>/print-invoice.php?id=' + order.order_number + '&print=true', '_blank');
+        };
         
         const modal = new bootstrap.Modal(document.getElementById('orderModal'));
         modal.show();

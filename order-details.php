@@ -149,7 +149,12 @@ include 'views/header.php';
             <span class="od-status-pill <?= strtolower($order['status']) ?>">
                  Status: <?= ucfirst($order['status']) ?>
             </span>
-            <span class="text-muted" style="font-size:14px;">Placed on <?= date('F j, Y \a\t g:i A', strtotime($order['created_at'])) ?></span>
+            <div class="d-flex align-items-center gap-3 mt-3">
+                <span class="text-muted" style="font-size:14px;">Placed on <?= date('F j, Y \a\t g:i A', strtotime($order['created_at'])) ?></span>
+                <a href="<?= baseUrl() ?>/print-invoice.php?id=<?= e($order['order_number']) ?>&print=true" target="_blank" class="btn btn-sm btn-white border rounded-pill px-3 fw-bold text-primary shadow-sm">
+                    <i class="fas fa-print me-1"></i> Print Invoice
+                </a>
+            </div>
         </div>
     </div>
 </section>
