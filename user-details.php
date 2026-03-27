@@ -52,14 +52,8 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $borrows = $stmt->fetchAll();
 
-// Fetch Orders
-$stmt = $pdo->prepare("
-    SELECT * FROM orders 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC LIMIT 5
-");
-$stmt->execute([$userId]);
-$orders = $stmt->fetchAll();
+$cart = new Cart($pdo);
+$orders = $cart->getUserOrders($userId, 5);
 
 // Fetch Reservations
 $stmt = $pdo->prepare("
@@ -211,6 +205,7 @@ include 'views/header.php';
     text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
 }
 .ud-status.pending { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.ud-status.processing { background: rgba(37,99,235,0.1); color: #2563eb; }
 .ud-status.completed, .ud-status.fulfilled, .ud-status.returned { background: rgba(16,185,129,0.15); color: #10b981; }
 .ud-status.active, .ud-status.waiting { background: rgba(59,130,246,0.15); color: #3b82f6; }
 .ud-status.cancelled { background: rgba(239,68,68,0.15); color: #ef4444; }
@@ -354,9 +349,6 @@ include 'views/header.php';
                                 <div style="font-weight:800; color:var(--bookhouse-text); margin-bottom:4px;">
                                     <?= number_format($order['total_amount']) ?> Ks
                                 </div>
-                                <span class="ud-status <?= strtolower($order['status']) ?>">
-                                    <?= ucfirst($order['status']) ?>
-                                </span>
                                 <div class="mt-1">
                                     <a href="order-details.php?id=<?= e($order['order_number']) ?>" style="font-size:11px; color:var(--bookhouse-orange); font-weight:700; text-decoration:none;">View Details</a>
                                 </div>

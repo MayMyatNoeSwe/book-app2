@@ -185,15 +185,16 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                 </div>
                 <div class="card-body p-4">
                     <div class="timeline-premium">
-                        <?php foreach($recent_activities as $idx => $act): 
+                        <?php 
+                        $display_activities = array_slice($recent_activities, 0, 5);
+                        foreach($display_activities as $act): 
                             $icon = 'fa-bolt';
                             $iconColor = 'text-primary';
                             if ($act['type'] === 'borrow') { $icon = 'fa-book-reader'; $iconColor = 'text-info'; }
                             elseif ($act['type'] === 'order') { $icon = 'fa-shopping-bag'; $iconColor = 'text-success'; }
                             elseif ($act['type'] === 'user') { $icon = 'fa-user-plus'; $iconColor = 'text-warning'; }
-                            $hiddenClass = $idx >= 5 ? 'activity-hidden' : '';
                         ?>
-                        <div class="timeline-item-premium d-flex gap-3 mb-4 <?= $hiddenClass ?>" data-type="<?= $act['type'] ?>" style="<?= $idx >= 5 ? 'display:none;' : '' ?>">
+                        <div class="timeline-item-premium d-flex gap-3 mb-4" data-type="<?= $act['type'] ?>">
                             <div class="timeline-bg-icon bg-lightest <?= $iconColor ?>">
                                 <i class="fas <?= $icon ?> small"></i>
                             </div>
@@ -206,12 +207,9 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
                         <?php endforeach; ?>
                     </div>
                     <?php if (count($recent_activities) > 5): ?>
-                    <button id="showAllActivityBtn" class="btn btn-soft-primary rounded-pill btn-sm w-100 fw-bold mt-2">
-                        <i class="fas fa-chevron-down me-1"></i>View All Details (<span id="hiddenCount"><?= count($recent_activities) - 5 ?></span> more)
-                    </button>
-                    <button id="hideActivityBtn" class="btn btn-soft-secondary rounded-pill btn-sm w-100 fw-bold mt-2" style="display:none;">
-                        <i class="fas fa-chevron-up me-1"></i>Show Less
-                    </button>
+                    <a href="<?= baseUrl() ?>/admin/activities.php" class="btn btn-soft-primary rounded-pill btn-sm w-100 fw-bold mt-2 py-2">
+                        View All Activity <i class="fas fa-arrow-right ms-1 smallest"></i>
+                    </a>
                     <?php endif; ?>
                 </div>
             </div>
@@ -258,25 +256,7 @@ renderAdminLayout('Dashboard Overview', function() use ($stats, $recent_activiti
             }
         });
 
-        // Activity show/hide toggle
-        const showBtn = document.getElementById('showAllActivityBtn');
-        const hideBtn = document.getElementById('hideActivityBtn');
-        if (showBtn && hideBtn) {
-            showBtn.addEventListener('click', function() {
-                document.querySelectorAll('.activity-hidden').forEach(el => {
-                    el.style.display = '';
-                });
-                showBtn.style.display = 'none';
-                hideBtn.style.display = '';
-            });
-            hideBtn.addEventListener('click', function() {
-                document.querySelectorAll('.activity-hidden').forEach(el => {
-                    el.style.display = 'none';
-                });
-                hideBtn.style.display = 'none';
-                showBtn.style.display = '';
-            });
-        }
+        // Activity toggle removed - now links to separate page
     });
     </script>
     <?php

@@ -48,14 +48,14 @@ $pageTitle = 'Logged Out - My Library';
         .logout-card {
             background: white;
             border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.1);
             overflow: hidden;
             max-width: 600px;
             width: 100%;
             position: relative;
             z-index: 1;
             text-align: center;
-            padding: 60px 40px;
+            padding: 30px 40px;
         }
         
         [data-bs-theme="dark"] .logout-card {
@@ -64,9 +64,9 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .logout-icon-wrapper {
-            width: 120px;
-            height: 120px;
-            margin: 0 auto 30px;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
             background: linear-gradient(135deg, var(--primary-color) 0%, #34495e 100%);
             border-radius: 50%;
             display: flex;
@@ -79,7 +79,7 @@ $pageTitle = 'Logged Out - My Library';
         .logout-icon-wrapper::before {
             content: '';
             position: absolute;
-            inset: -10px;
+            inset: -6px;
             border-radius: 50%;
             background: linear-gradient(135deg, var(--primary-color) 0%, #34495e 100%);
             opacity: 0.2;
@@ -113,7 +113,7 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .logout-icon {
-            font-size: 3.5rem;
+            font-size: 2.2rem;
             color: white;
             position: relative;
             z-index: 1;
@@ -121,10 +121,10 @@ $pageTitle = 'Logged Out - My Library';
         
         .logout-title {
             font-family: 'Playfair Display', serif;
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: 700;
             color: var(--text-dark);
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             animation: fadeInUp 0.6s ease-out 0.2s both;
         }
         
@@ -133,9 +133,9 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .logout-message {
-            font-size: 1.1rem;
+            font-size: 1rem;
             color: #6c757d;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             animation: fadeInUp 0.6s ease-out 0.3s both;
         }
         
@@ -144,10 +144,10 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .logout-username {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 600;
             color: var(--primary-color);
-            margin-bottom: 40px;
+            margin-bottom: 25px;
             animation: fadeInUp 0.6s ease-out 0.4s both;
         }
         
@@ -175,7 +175,7 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .btn-action {
-            padding: 14px 30px;
+            padding: 10px 24px;
             border-radius: 12px;
             font-weight: 600;
             font-size: 1rem;
@@ -223,8 +223,8 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .features-grid {
-            margin-top: 50px;
-            padding-top: 40px;
+            margin-top: 30px;
+            padding-top: 25px;
             border-top: 1px solid #e9ecef;
             animation: fadeInUp 0.6s ease-out 0.6s both;
         }
@@ -251,7 +251,7 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .feature-item {
-            padding: 20px;
+            padding: 15px 10px;
             background: #f8f9fa;
             border-radius: 12px;
             transition: all 0.3s ease;
@@ -267,9 +267,9 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .feature-item i {
-            font-size: 2rem;
+            font-size: 1.5rem;
             color: var(--primary-color);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         
         [data-bs-theme="dark"] .feature-item i {
@@ -325,9 +325,9 @@ $pageTitle = 'Logged Out - My Library';
         }
         
         .countdown-text {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: #6c757d;
-            margin-top: 30px;
+            margin-top: 20px;
             animation: fadeInUp 0.6s ease-out 0.7s both;
         }
         
@@ -398,7 +398,7 @@ $pageTitle = 'Logged Out - My Library';
             
             <p class="countdown-text">
                 <i class="fas fa-clock me-1"></i>
-                Redirecting to home in <span class="countdown-number" id="countdown">5</span> seconds...
+                Redirecting to home in <span class="countdown-number" id="countdown">3</span> seconds...
             </p>
             
             <div class="features-grid">
@@ -445,7 +445,7 @@ $pageTitle = 'Logged Out - My Library';
         document.querySelector('#themeToggle i').className = savedTheme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
         
         // Countdown and redirect
-        let countdown = 5;
+        let countdown = 3;
         const countdownElement = document.getElementById('countdown');
         
         const countdownInterval = setInterval(() => {

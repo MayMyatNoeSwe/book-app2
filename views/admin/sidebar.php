@@ -46,6 +46,12 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                 </a>
             </li>
             <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/sales.php" class="nav-link <?= $currentScript === 'sales.php' ? 'active' : '' ?>">
+                    <i class="fas fa-cart-shopping"></i>
+                    <span>Sales</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="<?= baseUrl() ?>/admin/categories.php" class="nav-link <?= $currentScript === 'categories.php' ? 'active' : '' ?>">
                     <i class="fas fa-layer-group"></i>
                     <span>Categories</span>
@@ -55,6 +61,12 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                 <a href="<?= baseUrl() ?>/admin/users.php" class="nav-link <?= $currentScript === 'users.php' ? 'active' : '' ?>">
                     <i class="fas fa-user-shield"></i>
                     <span>User Access</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/activities.php" class="nav-link <?= $currentScript === 'activities.php' ? 'active' : '' ?>">
+                    <i class="fas fa-history"></i>
+                    <span>Activity Log</span>
                 </a>
             </li>
         </ul>

@@ -439,89 +439,157 @@ include 'views/header.php';
     </div>
 </div>
 
-<!-- Payment Return Modal -->
+<!-- Payment Return Modal Redesign -->
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg" style="border-radius:24px; overflow:hidden;">
-            <div class="modal-header border-0 bg-primary text-white p-4">
-                <h5 class="modal-title fw-800"><i class="fas fa-wallet me-2"></i>Finalize Return</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-2xl" style="border-radius: 32px; overflow: hidden; background: #fff;">
+            <div class="row g-0">
+                <!-- Left Side: Summary -->
+                <div class="col-lg-5 bg-light p-4 p-xl-5 d-flex flex-column justify-content-between border-end">
+                    <div>
+                        <div class="d-flex align-items-center gap-3 mb-4">
+                            <div class="bg-primary text-white rounded-3 d-flex align-items-center justify-content-center" style="width:40px; height:40px;">
+                                <i class="fas fa-file-invoice"></i>
+                            </div>
+                            <h5 class="mb-0 fw-900 text-dark">Return Summary</h5>
+                        </div>
+                        
+                        <div class="p-4 rounded-4 bg-white shadow-sm border mb-4">
+                            <div class="text-muted smallest fw-700 text-uppercase mb-2">Book Information</div>
+                            <h4 class="fw-800 text-dark lh-sm mb-1" id="modal_book_title">—</h4>
+                            <div class="text-primary fw-700 small mb-0">Library Physical Copy</div>
+                        </div>
+
+                        <div class="p-4 rounded-4" style="background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;">
+                            <div class="opacity-75 smallest fw-700 text-uppercase mb-1">Total Payable</div>
+                            <div class="d-flex align-items-baseline gap-2">
+                                <span class="fw-900" style="font-size: 32px;" id="modal_total_amount">0</span>
+                                <span class="fw-700 small">Ks</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 mt-lg-0">
+                        <div class="alert alert-info border-0 rounded-4 smaller d-flex gap-3 mb-0" style="background: rgba(59, 130, 246, 0.08); color: #1e40af;">
+                            <i class="fas fa-info-circle mt-1"></i>
+                            <div>
+                                <strong class="d-block mb-1">How it works?</strong>
+                                Select a method, scan the QR code to pay, then upload your receipt. Our admin will verify it within 24 hours.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side: Interaction -->
+                <div class="col-lg-7 p-4 p-xl-5">
+                    <div class="d-flex justify-content-end mb-4 d-lg-none">
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+
+                    <form action="borrow.php" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="return">
+                        <input type="hidden" name="book_id" id="modal_book_id">
+
+                        <!-- Section 1: Method -->
+                        <div class="mb-4">
+                            <label class="form-label fw-800 text-dark small text-uppercase mb-3">1. Select Payment Method</label>
+                            <div class="row g-3">
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_wave" value="WavePay" checked onclick="updateQR('WavePay')">
+                                    <label class="pm-card" for="pay_wave">
+                                        <div class="pm-icon bg-primary-subtle text-primary">
+                                            <i class="fas fa-water"></i>
+                                        </div>
+                                        <span>WavePay</span>
+                                    </label>
+                                </div>
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kpay" value="KPay" onclick="updateQR('KPay')">
+                                    <label class="pm-card" for="pay_kpay">
+                                        <div class="pm-icon bg-success-subtle text-success">
+                                            <i class="fas fa-leaf"></i>
+                                        </div>
+                                        <span>KPay</span>
+                                    </label>
+                                </div>
+                                <div class="col-4">
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz" value="KBZPay" onclick="updateQR('KBZPay')">
+                                    <label class="pm-card" for="pay_kbz">
+                                        <div class="pm-icon bg-info-subtle text-info">
+                                            <i class="fas fa-university"></i>
+                                        </div>
+                                        <span>KBZPay</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 2: QR & Upload -->
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-6">
+                                <div class="qr-container h-100">
+                                    <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Scan QR</div>
+                                    <div class="qr-wrapper shadow-sm">
+                                        <img id="payment_qr" src="public/img/payments/wave_qr.png" alt="Scan QR" class="img-fluid">
+                                    </div>
+                                    <div class="mt-3 text-center fw-800 smaller text-primary" id="qr_label">WavePay Merchant</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="upload-container h-100">
+                                    <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Upload Receipt</div>
+                                    <div class="upload-box shadow-sm" onclick="document.getElementById('ss_input').click()">
+                                        <input type="file" name="screenshot" id="ss_input" hidden accept="image/*" required onchange="previewScreenshot(this)">
+                                        <div id="ss_preview" class="h-100 d-none">
+                                            <img src="" id="ss_img" class="h-100 w-100 object-fit-cover rounded-3">
+                                        </div>
+                                        <div id="ss_placeholder">
+                                            <div class="upload-circle mb-2">
+                                                <i class="fas fa-camera"></i>
+                                            </div>
+                                            <div style="font-size:10px;" class="fw-700 text-muted">Tap to Upload</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 border-0 shadow-lg" style="background:var(--bookhouse-orange); transition: 0.3s;">
+                            Confirm Return & Submit
+                        </button>
+                    </form>
+                </div>
             </div>
-            <form action="borrow.php" method="POST" enctype="multipart/form-data">
-                <div class="modal-body p-4">
-                    <input type="hidden" name="action" value="return">
-                    <input type="hidden" name="book_id" id="modal_book_id">
-                    
-                    <div class="text-center mb-4">
-                        <div class="text-muted smaller fw-700 text-uppercase mb-1">Book to Return</div>
-                        <h4 class="fw-800 text-dark mb-3" id="modal_book_title">—</h4>
-                        <div class="d-inline-block py-2 px-4 bg-primary-subtle text-primary rounded-pill fw-900" style="font-size:18px;">
-                            <span id="modal_total_amount">0</span> Ks
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-800 text-muted smaller text-uppercase">1. Choose Payment Method</label>
-                        <div class="row g-2">
-                            <div class="col-4">
-                                <input type="radio" class="btn-check" name="payment_method" id="pay_wave" value="WavePay" checked onclick="updateQR('WavePay')">
-                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_wave">
-                                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_LqI0S2I0m4hQj5vY5PzN4Y3F5G8p7y9-vA&s" class="d-block mx-auto mb-2 rounded-2" width="30">
-                                    <span style="font-size:10px;">Wave</span>
-                                </label>
-                            </div>
-                            <div class="col-4">
-                                <input type="radio" class="btn-check" name="payment_method" id="pay_kpay" value="KPay" onclick="updateQR('KPay')">
-                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_kpay">
-                                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/0e/KPAY_logo.png" class="d-block mx-auto mb-2" width="30">
-                                    <span style="font-size:10px;">KPay</span>
-                                </label>
-                            </div>
-                            <div class="col-4">
-                                <input type="radio" class="btn-check" name="payment_method" id="pay_kbz" value="KBZPay" onclick="updateQR('KBZPay')">
-                                <label class="btn btn-outline-primary w-100 p-3 rounded-4 fw-800" for="pay_kbz">
-                                    <img src="https://play-lh.googleusercontent.com/yU4V_rY0U2_Pz_f-fG-_vW8GvT_9vU4V_rY0U2_Pz_f-fG-" class="d-block mx-auto mb-2" width="30">
-                                    <span style="font-size:10px;">KBZPay</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-4 text-center p-3 rounded-4 bg-light shadow-inner" id="qr_section">
-                        <div class="text-muted smaller fw-700 text-uppercase mb-2">Scan to Pay</div>
-                        <img id="payment_qr" src="public/img/payments/wave_qr.png" class="img-fluid rounded-3 border bg-white p-2 shadow-sm" style="max-height: 180px;">
-                        <div class="mt-2 text-primary smaller fw-800" id="qr_label">WavePay Merchant</div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-800 text-muted smaller text-uppercase">2. Upload Screenshot</label>
-                        <div class="p-3 border-dashed rounded-4 bg-light text-center pointer-cursor" onclick="document.getElementById('ss_input').click()">
-                            <input type="file" name="screenshot" id="ss_input" hidden accept="image/*" required onchange="previewScreenshot(this)">
-                            <div id="ss_preview" class="mb-2 d-none">
-                                <img src="" id="ss_img" class="img-fluid rounded-3 shadow-sm" style="max-height: 150px;">
-                            </div>
-                            <div id="ss_placeholder">
-                                <i class="fas fa-cloud-upload-alt text-primary fa-2x mb-2"></i>
-                                <div class="smaller fw-700 text-muted">Tap to upload transaction receipt</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 p-4 pt-0">
-                    <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 shadow-sm border-0" style="background:var(--bookhouse-orange);">
-                        Submit Return Request
-                    </button>
-                    <button type="button" class="btn btn-link text-muted fw-700 w-100 mt-2 text-decoration-none" data-bs-dismiss="modal">Cancel</button>
-                </div>
-            </form>
         </div>
     </div>
 </div>
 
 <style>
-.border-dashed { border: 2px dashed #cbd5e1; transition: all 0.2s; }
-.border-dashed:hover { border-color: #3b82f6; background: #eff6ff !important; cursor: pointer; }
-.pointer-cursor { cursor: pointer; }
+.pm-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px 10px; border-radius: 16px; border: 2px solid #f1f5f9; cursor: pointer;
+    transition: all 0.2s; background: #fff; gap: 8px;
+}
+.pm-card span { font-size: 11px; font-weight: 800; color: #64748b; }
+.pm-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.btn-check:checked + .pm-card { border-color: #4f46e5; background: #f5f3ff; }
+.btn-check:checked + .pm-card span { color: #4f46e5; }
+.btn-check:checked + .pm-card .pm-icon { background: #4f46e5 !important; color: #fff !important; }
+
+.qr-container, .upload-container { background: #f8fafc; padding: 20px; border-radius: 20px; border: 1px solid #f1f5f9; }
+.qr-wrapper { background: #fff; padding: 12px; border-radius: 16px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+.upload-box { 
+    background: #fff; border-radius: 16px; height: 135px; border: 2px dashed #e2e8f0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; overflow: hidden; position: relative; transition: 0.2s;
+}
+.upload-box:hover { border-color: #4f46e5; background: #fdfcff; }
+.upload-circle { width: 44px; height: 44px; background: #f1f5f9; border-radius: 50%; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.upload-box:hover .upload-circle { background: #4f46e5; color: #fff; }
+
+.shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+.smaller { font-size: 12px; }
+.smallest { font-size: 10px; }
 </style>
 
 <script>
