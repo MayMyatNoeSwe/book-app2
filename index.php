@@ -101,7 +101,7 @@ $featuredBook = (!empty($bestSellingBooks)) ? $bestSellingBooks[0] : null;
 $heroTitle = $featuredBook ? $featuredBook->getTitle() : "Design";
 $heroAuthor = $featuredBook ? $featuredBook->getAuthor() : "Keith Granet";
 $heroCategory = $featuredBook ? $featuredBook->getCategory() : "Design Thinking";
-$heroPrice = "$32.78"; // Dummy price if not in DB
+$heroPrice = $featuredBook ? number_format($featuredBook->getPrice()) . " Ks" : "9,000 Ks"; // Live price from DB
 $heroRating = $featuredBook ? $featuredBook->getAverageRating() : 4.5;
 $imageApiCover = function ($title, $author) {
     return getDummyBookCover($title, $author, 700, 1050);

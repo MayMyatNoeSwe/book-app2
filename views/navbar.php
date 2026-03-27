@@ -299,6 +299,20 @@ body {
 [data-bs-theme="dark"] .dropdown-divider {
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
+
+/* Custom Join Button Style */
+.button {
+    background-color: var(--nav-accent) !important;
+    color: white !important;
+    border: none !important;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+.button:hover {
+    background-color: #cf6a50 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(224, 122, 95, 0.25) !important;
+}
 </style>
 
 <div class="navbar-wrapper">
@@ -367,7 +381,7 @@ body {
             </div>
             <?php else: ?>
             <a href="<?= baseUrl() ?>/login.php" class="bh-nav-link d-none d-lg-block">Log In</a>
-            <a href="<?= baseUrl() ?>/register.php" class="btn btn-primary rounded-pill px-4 d-none d-md-block shadow-sm">Join</a>
+            <a href="<?= baseUrl() ?>/register.php" class="button btn rounded-pill px-4 d-none d-md-block shadow-sm">Join</a>
             <?php endif; ?>
 
             <!-- Mobile Hamburger -->

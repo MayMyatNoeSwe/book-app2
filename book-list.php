@@ -183,15 +183,19 @@ include 'views/header.php';
 }
 .bl-filter-bar.scrolled { box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
 .bl-search-wrap {
-    display: flex; align-items: center; gap: 10px;
-    background: rgba(0,0,0,0.03);
-    border-radius: 14px; padding: 4px 16px;
-    border: 1px solid rgba(0,0,0,0.06);
-    transition: border-color 0.2s, box-shadow 0.2s;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(8px);
+    border-radius: 16px; padding: 6px 18px;
+    border: 1px solid rgba(61, 64, 91, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
 }
 .bl-search-wrap:focus-within {
     border-color: var(--bookhouse-orange);
-    box-shadow: 0 0 0 3px rgba(224,122,95,0.1);
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(224, 122, 95, 0.12);
+    transform: translateY(-1px);
 }
 [data-bs-theme="dark"] .bl-search-wrap {
     background: rgba(255,255,255,0.05);
@@ -205,23 +209,36 @@ include 'views/header.php';
 .bl-search-wrap input::placeholder { color: var(--bookhouse-text-muted); }
 .bl-pill-select {
     appearance: none;
-    border: 1px solid rgba(0,0,0,0.08);
-    background: rgba(0,0,0,0.02);
-    border-radius: 12px;
-    padding: 10px 36px 10px 14px;
-    font-size: 13px; font-weight: 600;
-    color: var(--bookhouse-text); cursor: pointer;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23636e72' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    border: 1px solid rgba(61, 64, 91, 0.1);
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(8px);
+    border-radius: 14px;
+    padding: 10px 40px 10px 16px;
+    font-size: 13px; font-weight: 700;
+    color: var(--bookhouse-dark); cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23E07A5F' d='M6 8.5L2 4h8z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    transition: border-color 0.2s;
+    background-position: right 14px center;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
 }
 [data-bs-theme="dark"] .bl-pill-select {
-    background-color: rgba(255,255,255,0.05);
-    border-color: rgba(255,255,255,0.1);
+    background-color: rgba(30, 41, 59, 0.5);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #f1f5f9;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
 }
-.bl-pill-select:focus { border-color: var(--bookhouse-orange); outline: none; }
+.bl-pill-select:hover {
+    border-color: var(--bookhouse-orange);
+    background-color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+.bl-pill-select:focus { 
+    border-color: var(--bookhouse-orange); 
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(224, 122, 95, 0.15);
+}
 .bl-view-toggle {
     display: inline-flex;
     border: 1px solid rgba(0,0,0,0.08);
@@ -241,6 +258,33 @@ include 'views/header.php';
     border-top: 1px solid rgba(0,0,0,0.04);
 }
 [data-bs-theme="dark"] .bl-active-filters { border-color: rgba(255,255,255,0.06); }
+
+.bl-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(239, 68, 68, 0.08); /* Pale red */
+    color: #ef4444 !important;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-decoration: none !important;
+    border: 1.5px solid rgba(239, 68, 68, 0.12);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    margin-left: 8px;
+}
+
+.bl-btn-clear:hover {
+    background: #ef4444;
+    color: #fff !important;
+    border-color: #ef4444;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 15px rgba(239, 68, 68, 0.25);
+}
+
 .bl-filter-chip {
     display: inline-flex; align-items: center; gap: 6px;
     background: rgba(224,122,95,0.08); color: var(--bookhouse-orange);
@@ -628,7 +672,7 @@ include 'views/header.php';
                 <?php if ($availability !== 'all'): ?>
                     <span class="bl-filter-chip"><?= ucfirst($availability) ?></span>
                 <?php endif; ?>
-                <a href="book-list.php" style="font-size:12px; color:#ef4444; font-weight:700; text-decoration:none; margin-left:4px;"><i class="fas fa-times me-1"></i>Clear All</a>
+                <a href="book-list.php" class="bl-btn-clear"><i class="fas fa-times me-1"></i>Clear All</a>
             </div>
             <?php endif; ?>
         </form>
@@ -666,8 +710,8 @@ include 'views/header.php';
                                 <a href="book-details.php?id=<?= e($book->getId()) ?>" class="btn-details">
                                     <i class="fas fa-arrow-right me-1"></i> View Details
                                 </a>
-                                <?php if (Auth::check() && $book->isAvailable()): ?>
-                                    <?php if (!$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                                <?php if ($book->isAvailable()): ?>
+                                    <?php if (!Auth::check() || !$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
                                     <button class="btn-borrow" onclick="quickBorrow('<?= e($book->getId()) ?>')">
                                         <i class="fas fa-plus me-1"></i> Borrow Now
                                     </button>
@@ -732,8 +776,8 @@ include 'views/header.php';
                     </div>
                     <div class="bl-list-actions">
                         <a href="book-details.php?id=<?= e($book->getId()) ?>" class="bl-btn-outline">Details</a>
-                        <?php if (Auth::check() && $book->isAvailable()): ?>
-                            <?php if (!$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
+                        <?php if ($book->isAvailable()): ?>
+                            <?php if (!Auth::check() || !$library->isCurrentlyBorrowing(Auth::id(), $book->getId())): ?>
                             <button class="bl-btn-fill" onclick="quickBorrow('<?= e($book->getId()) ?>')">Borrow</button>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -907,7 +951,20 @@ function clearSearch() {
 let currentBookId = null;
 function quickBorrow(bookId) {
     <?php if (!Auth::check()): ?>
-        window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
+        Swal.fire({
+            icon: 'info',
+            title: 'Login Required',
+            text: 'Please login to borrow this book.',
+            showCancelButton: true,
+            confirmButtonText: 'Login Now',
+            confirmButtonColor: '#0fac60', /* Greenish if they want, but image shows terra-cotta */
+            confirmButtonColor: '#E07A5F',
+            cancelButtonText: 'Later'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
+            }
+        });
         return;
     <?php endif; ?>
     currentBookId = bookId;
