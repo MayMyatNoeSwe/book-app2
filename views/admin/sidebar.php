@@ -7,7 +7,7 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
             <div class="logo-box bg-primary rounded-3 d-flex align-items-center justify-content-center shadow-primary" style="width: 38px; height: 38px;">
                 <i class="fas fa-shield-alt text-white"></i>
             </div>
-            <span class="fs-4 fw-800 text-dark">Admin<span class="text-primary">Hub</span></span>
+            <span class="fs-4 fw-800 text-dark"><?= e(getSetting('site_name', 'BookHouse')) ?></span>
         </a>
     </div>
 

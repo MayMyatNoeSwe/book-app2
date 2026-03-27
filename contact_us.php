@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 include 'views/header.php';
-include 'views/navbar.php';
+
 ?>
 </div> <!-- Close default container from header.php -->
 

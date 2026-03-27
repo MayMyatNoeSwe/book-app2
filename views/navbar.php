@@ -320,7 +320,7 @@ body {
         <!-- Logo -->
         <a href="<?= baseUrl() ?>/index.php" class="bh-brand">
             <div class="brand-icon"><i class="fas fa-book"></i></div>
-            <span class="d-none d-sm-inline">Book<span style="color:var(--nav-accent)">House</span></span>
+            <span class="d-none d-sm-inline"><?= e(getSetting('site_name', 'BookHouse')) ?></span>
         </a>
 
         <!-- Desktop Navigation -->
@@ -398,7 +398,7 @@ body {
     <div class="d-flex justify-content-between align-items-center mb-5">
         <a href="<?= baseUrl() ?>/index.php" class="bh-brand p-0">
             <div class="brand-icon"><i class="fas fa-book"></i></div>
-            <span>BookHouse</span>
+            <span><?= e(getSetting('site_name', 'BookHouse')) ?></span>
         </a>
         <button class="btn-close shadow-none" id="drawer-close"></button>
     </div>

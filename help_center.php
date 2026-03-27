@@ -8,7 +8,7 @@ require_once 'includes/functions.php';
 use App\Auth;
 
 include 'views/header.php';
-include 'views/navbar.php';
+
 ?>
 </div> <!-- Close default container from header.php -->
 

@@ -469,3 +469,45 @@ function getBookCoverUrl($book, string $title = '', string $author = ''): string
     // 3. Fallback to dummy cover
     return getDummyBookCover($extractedTitle, $extractedAuthor);
 }
+
+/**
+ * Get a setting value from the database
+ * @param string $key
+ * @param mixed $default
+ * @return mixed
+ */
+function getSetting(string $key, $default = null)
+{
+    static $settings = null;
+
+    if ($settings === null) {
+        try {
+            $library = new \App\Library();
+            $pdo = $library->getPdo();
+            $stmt = $pdo->query("SELECT `key`, `value` FROM settings");
+            $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+        } catch (Exception $e) {
+            $settings = [];
+        }
+    }
+
+    return $settings[$key] ?? $default;
+}
+
+/**
+ * Set a setting value in the database
+ * @param string $key
+ * @param mixed $value
+ * @return bool
+ */
+function setSetting(string $key, $value): bool
+{
+    try {
+        $library = new \App\Library();
+        $pdo = $library->getPdo();
+        $stmt = $pdo->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?");
+        return $stmt->execute([$key, $value, $value]);
+    } catch (Exception $e) {
+        return false;
+    }
+}

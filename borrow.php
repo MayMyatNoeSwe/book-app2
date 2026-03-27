@@ -18,7 +18,7 @@ $userId = $_SESSION['user_id'];
 
 // Handle Book Return Action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'return') {
-    $bookId = (int)$_POST['book_id'];
+    $bookId = $_POST['book_id'];
     $paymentMethod = $_POST['payment_method'] ?? 'KBZPay';
     
     // Process screenshot upload
@@ -47,7 +47,7 @@ $pendingBorrows = $library->getUserBorrows($userId, 'pending');
 $pastBorrows = $library->getUserBorrows($userId, 'past');
 
 include 'views/header.php';
-include 'views/navbar.php';
+
 ?>
 
 <style>
@@ -218,7 +218,7 @@ include 'views/navbar.php';
                     <i class="fas fa-search"></i>
                     <h4>No active borrows</h4>
                     <p>It seems your reading desk is empty. Find a great book to borrow!</p>
-                    <a href="book-list.php?availability=available" class="btn btn-primary fw-bold mt-2" style="background:var(--bookhouse-orange); border:none;"><i class="fas fa-book me-2"></i>Browse Library</a>
+                    <a href="book-list.php?availability=available" class="btn btn-primary fw-bold mt-2 px-4 shadow-sm" style="background:var(--bookhouse-orange); border:none; border-radius: 999px;">Browse Library</a>
                 </div>
             <?php else: ?>
                 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
