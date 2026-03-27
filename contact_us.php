@@ -22,13 +22,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Please enter a valid email address';
     } else {
-        // In production, send email here
-        // For now, just log it
-        error_log("Contact Form Submission - Name: $name, Email: $email, Subject: $subject");
-        $success = 'Thank you for contacting us! We will get back to you soon.';
-        
-        // Clear form
-        $name = $email = $subject = $message = '';
+        try {
+            $library = new \App\Library();
+            $pdo = $library->getPdo();
+            $stmt = $pdo->prepare("INSERT INTO contact_messages (name, email, subject, message) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $email, $subject, $message]);
+            
+            $success = 'Thank you for contacting us! We will get back to you soon.';
+            
+            // Clear form
+            $name = $email = $subject = $message = '';
+        } catch (Exception $e) {
+            $error = 'Sorry, something went wrong while sending your message. Please try again later.';
+            error_log("Contact Form DB Error: " . $e->getMessage());
+        }
     }
 }
 
@@ -38,11 +45,17 @@ include 'views/header.php';
 </div> <!-- Close default container from header.php -->
 
 <style>
+:root {
+    --primary-alt: #cf6a50;
+    --secondary-alt: #3d405b;
+    --light-alt: #f4f1de;
+}
+
 .contact-hero {
-    background: linear-gradient(135deg, rgba(46, 138, 64, 0.95), rgba(52, 73, 94, 0.95)),
+    background: linear-gradient(135deg, rgba(207, 106, 80, 0.95), rgba(61, 64, 91, 0.95)),
                 url('https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover;
     color: white;
-    padding: 100px 0 80px;
+    padding: 120px 0 100px;
     position: relative;
     overflow: hidden;
 }
@@ -50,22 +63,14 @@ include 'views/header.php';
 .contact-hero::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="25" cy="25" r="2" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="2" fill="white" opacity="0.1"/></svg>') repeat;
-    opacity: 0.3;
-}
-
-.contact-hero-content {
-    position: relative;
-    z-index: 1;
+    opacity: 0.2;
 }
 
 .contact-section {
-    padding: 80px 0;
-    background: #f8f9fa;
+    padding: 100px 0;
+    background: var(--light-alt);
 }
 
 [data-bs-theme="dark"] .contact-section {
@@ -74,240 +79,158 @@ include 'views/header.php';
 
 .contact-card {
     background: white;
-    border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    border-radius: 30px;
+    box-shadow: 0 20px 60px rgba(61, 64, 91, 0.08);
     overflow: hidden;
-    transition: transform 0.3s ease;
-}
-
-[data-bs-theme="dark"] .contact-card {
-    background: #1e293b;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-}
-
-.contact-card:hover {
-    transform: translateY(-5px);
+    border: 1px solid rgba(0,0,0,0.03);
 }
 
 .contact-info-card {
-    background: linear-gradient(135deg, var(--primary-color), #34495e);
+    background: linear-gradient(135deg, var(--primary-alt), var(--secondary-alt));
     color: white;
-    padding: 40px;
-    border-radius: 20px;
+    padding: 50px;
+    border-radius: 30px;
     height: 100%;
 }
 
 .contact-info-item {
     display: flex;
-    align-items-start;
-    margin-bottom: 30px;
+    align-items: center;
+    margin-bottom: 25px;
     padding: 20px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    backdrop-filter: blur(5px);
     transition: all 0.3s ease;
 }
 
 .contact-info-item:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateX(10px);
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(8px);
 }
 
 .contact-info-icon {
     width: 50px;
     height: 50px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
+    background: white;
+    color: var(--primary-alt);
+    border-radius: 15px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-right: 20px;
     flex-shrink: 0;
-}
-
-.contact-info-icon i {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
+    box-shadow: 0 8px 15px rgba(0,0,0,0.1);
 }
 
 .contact-form {
-    padding: 40px;
-}
-
-.form-group {
-    margin-bottom: 25px;
+    padding: 50px;
 }
 
 .form-label {
-    font-weight: 600;
-    color: var(--text-dark);
+    font-weight: 700;
+    color: var(--secondary-alt);
     margin-bottom: 10px;
-    display: block;
-}
-
-[data-bs-theme="dark"] .form-label {
-    color: #e2e8f0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
 .form-control {
-    border: 2px solid #e9ecef;
-    border-radius: 12px;
-    padding: 12px 20px;
-    transition: all 0.3s ease;
-    font-size: 1rem;
+    border: 2px solid #edf2f7;
+    border-radius: 15px;
+    padding: 14px 20px;
+    transition: all 0.3s;
+    background: #f8fafc;
 }
 
 .form-control:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 0.2rem rgba(46, 138, 64, 0.15);
-}
-
-[data-bs-theme="dark"] .form-control {
-    background: #0f172a;
-    border-color: #334155;
-    color: #e2e8f0;
-}
-
-[data-bs-theme="dark"] .form-control:focus {
-    background: #0f172a;
-    border-color: var(--accent-color);
-}
-
-textarea.form-control {
-    min-height: 150px;
-    resize: vertical;
+    border-color: var(--primary-alt);
+    background: white;
+    box-shadow: 0 0 0 4px rgba(207, 106, 80, 0.1);
 }
 
 .btn-submit {
-    background: linear-gradient(135deg, var(--primary-color), #34495e);
+    background: var(--primary-alt);
     color: white;
     border: none;
-    padding: 15px 40px;
-    border-radius: 12px;
-    font-weight: 600;
+    padding: 16px 40px;
+    border-radius: 18px;
+    font-weight: 800;
     font-size: 1.1rem;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
     width: 100%;
+    margin-top: 10px;
+    box-shadow: 0 10px 25px rgba(207, 106, 80, 0.2);
 }
 
 .btn-submit:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(46, 138, 64, 0.3);
-}
-
-.social-links {
-    display: flex;
-    gap: 15px;
-    margin-top: 30px;
-}
-
-.social-link {
-    width: 45px;
-    height: 45px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    text-decoration: none;
-    transition: all 0.3s ease;
-}
-
-.social-link:hover {
-    background: white;
-    color: var(--primary-color);
+    background: #b5543c;
     transform: translateY(-3px);
-}
-
-.map-container {
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    height: 400px;
-}
-
-.map-container iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
+    box-shadow: 0 15px 30px rgba(207, 106, 80, 0.3);
+    color: white;
 }
 
 .faq-section {
-    padding: 80px 0;
+    padding: 100px 0;
+    background: #fff;
 }
 
 .faq-item {
     background: white;
-    border-radius: 12px;
-    margin-bottom: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-radius: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.02);
+    border: 1px solid rgba(0,0,0,0.02);
     overflow: hidden;
-}
-
-[data-bs-theme="dark"] .faq-item {
-    background: #1e293b;
+    transition: all 0.3s;
 }
 
 .faq-question {
-    padding: 20px 25px;
+    padding: 24px 30px;
+    font-weight: 700;
+    color: var(--secondary-alt);
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-weight: 600;
-    color: var(--text-dark);
-    transition: all 0.3s ease;
+    transition: all 0.3s;
 }
 
-[data-bs-theme="dark"] .faq-question {
-    color: #e2e8f0;
-}
+.faq-question:hover { background: #fcfcfd; }
 
-.faq-question:hover {
-    background: #f8f9fa;
-}
-
-[data-bs-theme="dark"] .faq-question:hover {
-    background: #0f172a;
+.faq-icon {
+    color: var(--primary-alt);
+    transition: transform 0.3s;
 }
 
 .faq-answer {
-    padding: 0 25px;
+    padding: 0 30px;
     max-height: 0;
     overflow: hidden;
-    transition: all 0.3s ease;
-    color: #6c757d;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #64748b;
+    line-height: 1.8;
 }
 
-[data-bs-theme="dark"] .faq-answer {
-    color: #94a3b8;
+.faq-item.active { border-color: var(--primary-alt); box-shadow: 0 15px 40px rgba(207, 106, 80, 0.08); }
+.faq-item.active .faq-answer { padding: 0 30px 24px; max-height: 500px; }
+.faq-item.active .faq-icon { transform: rotate(180deg); }
+
+.map-container {
+    border-radius: 30px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.05);
+    height: 450px;
+    border: 1px solid rgba(0,0,0,0.05);
 }
 
-.faq-item.active .faq-answer {
-    padding: 0 25px 20px;
-    max-height: 500px;
-}
-
-.faq-item.active .faq-icon {
-    transform: rotate(180deg);
-}
-
-.faq-icon {
-    transition: transform 0.3s ease;
-}
+.map-container iframe { width: 100%; height: 100%; border: none; }
 
 @media (max-width: 768px) {
-    .contact-hero {
-        padding: 60px 0 40px;
-    }
-    
-    .contact-section {
-        padding: 40px 0;
-    }
-    
-    .contact-form {
-        padding: 30px 20px;
-    }
+    .contact-hero { padding: 80px 0 60px; }
+    .contact-form, .contact-info-card { padding: 30px; }
 }
 </style>
 
@@ -523,7 +446,7 @@ Swal.fire({
     icon: 'error',
     title: 'Error',
     text: <?= json_encode($error) ?>,
-    confirmButtonColor: '#2e8a40',
+    confirmButtonColor: '#cf6a50',
     showClass: {
         popup: 'animate__animated animate__shakeX'
     }
@@ -535,7 +458,7 @@ Swal.fire({
     icon: 'success',
     title: 'Message Sent!',
     text: <?= json_encode($success) ?>,
-    confirmButtonColor: '#2e8a40',
+    confirmButtonColor: '#cf6a50',
     showClass: {
         popup: 'animate__animated animate__fadeInDown'
     }
@@ -555,7 +478,7 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
             icon: 'warning',
             title: 'Missing Information',
             text: 'Please fill in all required fields',
-            confirmButtonColor: '#2e8a40'
+            confirmButtonColor: '#cf6a50'
         });
         return false;
     }
@@ -568,7 +491,7 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
             icon: 'warning',
             title: 'Invalid Email',
             text: 'Please enter a valid email address',
-            confirmButtonColor: '#2e8a40'
+            confirmButtonColor: '#cf6a50'
         });
         return false;
     }

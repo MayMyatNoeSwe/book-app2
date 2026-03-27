@@ -1,8 +1,10 @@
 <?php
+require_once 'vendor/autoload.php';
 require_once 'includes/sessions.php';
 require_once 'includes/env_loader.php';
 require_once 'config/database.php';
 require_once 'src/Auth.php';
+require_once 'includes/functions.php';
 
 use App\Auth;
 

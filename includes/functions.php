@@ -6,6 +6,11 @@ if (!defined('APP_ROOT')) {
     define('APP_ROOT', dirname(__DIR__));
 }
 
+// Ensure autoloader is available
+if (file_exists(APP_ROOT . '/vendor/autoload.php')) {
+    require_once APP_ROOT . '/vendor/autoload.php';
+}
+
 /**
  * Get the list of available book categories
  * @return array
@@ -516,7 +521,7 @@ function setSetting(string $key, $value): bool
 if (getSetting('maintenance_mode') === '1' && !isAdmin()) {
     $currentFile = basename($_SERVER['PHP_SELF']);
     // Pages that are EXEMPT from maintenance mode redirect
-    $exemptPages = ['maintenance.php', 'login.php', 'register.php'];
+    $exemptPages = ['maintenance.php', 'login.php', 'register.php', 'contact_us.php'];
     
     // Check if we are in admin directory or on an exempt page
     $isAdminDir = strpos($_SERVER['PHP_SELF'], '/admin/') !== false;

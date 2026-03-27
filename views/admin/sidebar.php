@@ -64,6 +64,21 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                 </a>
             </li>
             <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/messages.php" class="nav-link <?= $currentScript === 'messages.php' ? 'active' : '' ?>">
+                    <i class="fas fa-envelope-open-text"></i>
+                    <span>Messages</span>
+                    <?php
+                    // Show unread count badge
+                    try {
+                        $mPdo = (new \App\Library())->getPdo();
+                        $unreadCount = (int)$mPdo->query("SELECT COUNT(*) FROM contact_messages WHERE `status` = 'unread'")->fetchColumn();
+                        if ($unreadCount > 0):
+                    ?>
+                        <span class="badge bg-primary rounded-pill ms-auto" style="font-size:10px;"><?= $unreadCount ?></span>
+                    <?php endif; } catch(Exception $e) {} ?>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="<?= baseUrl() ?>/admin/activities.php" class="nav-link <?= $currentScript === 'activities.php' ? 'active' : '' ?>">
                     <i class="fas fa-history"></i>
                     <span>Activity Log</span>

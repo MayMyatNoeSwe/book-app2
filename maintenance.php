@@ -2,6 +2,7 @@
 // maintenance.php — Premium Maintenance Mode Page
 require_once 'vendor/autoload.php';
 require_once 'includes/sessions.php';
+require_once 'includes/env_loader.php';
 require_once 'includes/functions.php';
 
 // If maintenance mode is OFF, redirect back to home
@@ -186,7 +187,7 @@ if (getSetting('maintenance_mode') !== '1') {
         </div>
 
         <div class="contact-group">
-            <a href="mailto:<?= e(getSetting('contact_email', 'admin@example.com')) ?>" class="btn-contact btn-email">
+            <a href="contact_us.php" class="btn-contact btn-email">
                 <i class="fas fa-envelope me-2"></i> Contact Us
             </a>
         </div>
