@@ -263,12 +263,39 @@ class Library
         
         // PDO needs limit/offset as ints to work in some modes with execute
         $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(count($params) + 1, $limit, \PDO::PARAM_INT);
-        $stmt->bindValue(count($params) + 2, $offset, \PDO::PARAM_INT);
+        $stmt->bindValue(count($params) + 1, (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue(count($params) + 2, (int)$offset, \PDO::PARAM_INT);
         foreach ($params as $k => $v) {
             $stmt->bindValue($k + 1, $v);
         }
         $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get borrow records for a specific user, filtered by status
+     */
+    public function getUserBorrows(int $userId, string $type = 'active'): array
+    {
+        $sql = "SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price
+                FROM borrowing_history bh
+                JOIN books b ON bh.book_id = b.id
+                WHERE bh.user_id = ?";
+        
+        $params = [$userId];
+        
+        if ($type === 'active') {
+            $sql .= " AND bh.returned_at IS NULL AND bh.status IN ('approved', 'return_pending')";
+        } elseif ($type === 'pending') {
+            $sql .= " AND bh.status = 'pending'";
+        } elseif ($type === 'past') {
+            $sql .= " AND (bh.returned_at IS NOT NULL OR bh.status = 'rejected')";
+        }
+        
+        $sql .= " ORDER BY bh.borrowed_at DESC";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -423,6 +450,17 @@ class Library
         $stmt->execute([$method, $screenshot, $userId, $bookId]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Alias for returnBook to maintain compatibility with older borrow.php versions
+     */
+    public function requestReturn(int $userId, string $bookId, string $method, string $screenshotPath): bool
+    {
+        return $this->returnBook($bookId, $userId, [
+            'method' => $method,
+            'screenshot' => $screenshotPath
+        ]);
     }
 
     // ======================== Notifications ========================

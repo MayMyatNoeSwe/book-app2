@@ -1,85 +1,53 @@
 <?php
-$pageTitle = "My Borrowing History";
-require_once 'includes/sessions.php';
+// borrow.php — Physical Book Borrowing Management
 require_once 'vendor/autoload.php';
-require_once 'includes/env_loader.php';
+require_once 'includes/sessions.php';
 require_once 'includes/functions.php';
+require_once 'includes/env_loader.php';
+require_once 'src/Library.php';
 
-use App\Auth;
 use App\Library;
 
-// Require authentication
-if (!Auth::check()) {
-    header('Location: login.php?redirect=borrow.php');
-    exit;
+if (!isLoggedIn()) {
+    header("Location: login.php");
+    exit();
 }
 
 $library = new Library();
-$userId = Auth::id();
+$userId = $_SESSION['user_id'];
 
-$config = require 'config/database.php';
-$dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
-$pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
-
-// Handle Return Action
+// Handle Book Return Action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'return') {
-    $bookId = $_POST['book_id'] ?? '';
-    $paymentMethod = $_POST['payment_method'] ?? 'manual';
+    $bookId = (int)$_POST['book_id'];
+    $paymentMethod = $_POST['payment_method'] ?? 'KBZPay';
     
-    $screenshotPath = null;
+    // Process screenshot upload
+    $screenshotPath = '';
     if (isset($_FILES['screenshot']) && $_FILES['screenshot']['error'] === 0) {
-        $ext = pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION);
-        $fileName = 'return_' . $userId . '_' . time() . '.' . $ext;
-        $uploadDir = 'assets/uploads/payments/';
+        $uploadDir = 'public/img/uploads/receipts/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-        if (move_uploaded_file($_FILES['screenshot']['tmp_name'], $uploadDir . $fileName)) {
-            $screenshotPath = $uploadDir . $fileName;
-        }
+        
+        $fileName = 'receipt_' . time() . '_' . $_FILES['screenshot']['name'];
+        $screenshotPath = $uploadDir . $fileName;
+        move_uploaded_file($_FILES['screenshot']['tmp_name'], $screenshotPath);
     }
-
-    if ($library->returnBook($bookId, $userId, ['method' => $paymentMethod, 'screenshot' => $screenshotPath])) {
-        $_SESSION['success_msg'] = "Return request submitted! Waiting for admin approval.";
+    
+    if ($library->requestReturn($userId, $bookId, $paymentMethod, $screenshotPath)) {
+        $_SESSION['success_msg'] = "Return request submitted! Admin will verify your payment and return within 24 hours.";
     } else {
-        $_SESSION['error_msg'] = "Failed to submit return request.";
+        $_SESSION['error_msg'] = "Failed to submit return request. Please check if you have active borrows for this book.";
     }
-    header('Location: borrow.php');
-    exit;
+    header("Location: borrow.php");
+    exit();
 }
 
-// Fetch Pending Borrows
-$stmtPending = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image, b.category 
-    FROM borrowing_history bh
-    JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.`status` = 'pending'
-    ORDER BY bh.borrowed_at DESC
-");
-$stmtPending->execute([$userId]);
-$pendingBorrows = $stmtPending->fetchAll();
-
-// Fetch Active Borrows (approved)
-$stmtActive = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price 
-    FROM borrowing_history bh
-    JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND bh.`status` IN ('approved', 'return_pending') AND bh.returned_at IS NULL
-    ORDER BY bh.borrowed_at DESC
-");
-$stmtActive->execute([$userId]);
-$activeBorrows = $stmtActive->fetchAll();
-
-// Fetch Past Borrows (returned + rejected)
-$stmtPast = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price 
-    FROM borrowing_history bh
-    JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ? AND (bh.`status` IN ('returned', 'rejected') OR bh.returned_at IS NOT NULL)
-    ORDER BY COALESCE(bh.returned_at, bh.borrowed_at) DESC
-");
-$stmtPast->execute([$userId]);
-$pastBorrows = $stmtPast->fetchAll();
+// Fetch user's borrow history
+$activeBorrows = $library->getUserBorrows($userId, 'active');
+$pendingBorrows = $library->getUserBorrows($userId, 'pending');
+$pastBorrows = $library->getUserBorrows($userId, 'past');
 
 include 'views/header.php';
+include 'views/navbar.php';
 ?>
 
 <style>
@@ -192,7 +160,6 @@ include 'views/header.php';
 .bw-empty i { font-size: 40px; color: var(--bookhouse-text-muted); opacity: 0.3; margin-bottom: 16px; }
 .bw-empty h4 { font-weight: 800; color: var(--bookhouse-text); margin-bottom: 8px; }
 .bw-empty p { color: var(--bookhouse-text-muted); font-size: 15px; }
-
 </style>
 
 <div class="bw-hero">
@@ -280,7 +247,7 @@ include 'views/header.php';
                                         <div class="bw-time">
                                             <i class="far fa-calendar"></i> Due: <?= date('M j, Y', strtotime($b['due_date'])) ?>
                                         </div>
-
+                                        
                                          <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
                                             <div class="d-flex justify-content-between mb-1">
                                                 <span class="text-muted">Borrow Fee:</span>
@@ -403,7 +370,7 @@ include 'views/header.php';
                                                 <span class="fw-bold"><?= number_format($b['borrow_price']) ?> Ks</span>
                                             </div>
                                             <?php if (($b['penalty_fee'] ?? 0) > 0 || ($isOverdue ?? false)): 
-                                                $p = max($b['penalty_fee'] ?? 0, $penalty ?? 0);
+                                                $p = max($b['penalty_fee'] ?? 0, (isset($penalty) ? $penalty : 0));
                                                 if ($p > 0):
                                             ?>
                                                 <div class="d-flex justify-content-between text-danger mb-1">
@@ -439,7 +406,7 @@ include 'views/header.php';
     </div>
 </div>
 
-<!-- Payment Return Modal Redesign -->
+<!-- Original Payment Return Modal -->
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-2xl" style="border-radius: 32px; overflow: hidden; background: #fff;">
@@ -490,49 +457,38 @@ include 'views/header.php';
                         <input type="hidden" name="action" value="return">
                         <input type="hidden" name="book_id" id="modal_book_id">
 
-                        <!-- Section 1: Method -->
                         <div class="mb-4">
                             <label class="form-label fw-800 text-dark small text-uppercase mb-3">1. Select Payment Method</label>
-                            <div class="row g-3">
-                                <div class="col-4">
-                                    <input type="radio" class="btn-check" name="payment_method" id="pay_wave" value="WavePay" checked onclick="updateQR('WavePay')">
-                                    <label class="pm-card" for="pay_wave">
-                                        <div class="pm-icon bg-primary-subtle text-primary">
-                                            <i class="fas fa-water"></i>
+                            <div class="row g-3 justify-content-center">
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_yellow" value="KBZPay (Personal)" checked onclick="updateQR('yellow')">
+                                    <label class="pm-card" for="pay_kbz_yellow">
+                                        <div class="pm-icon bg-warning-subtle text-warning">
+                                            <i class="fas fa-user"></i>
                                         </div>
-                                        <span>WavePay</span>
+                                        <span>WavePay (Yellow)</span>
                                     </label>
                                 </div>
-                                <div class="col-4">
-                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kpay" value="KPay" onclick="updateQR('KPay')">
-                                    <label class="pm-card" for="pay_kpay">
-                                        <div class="pm-icon bg-success-subtle text-success">
-                                            <i class="fas fa-leaf"></i>
-                                        </div>
-                                        <span>KPay</span>
-                                    </label>
-                                </div>
-                                <div class="col-4">
-                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz" value="KBZPay" onclick="updateQR('KBZPay')">
-                                    <label class="pm-card" for="pay_kbz">
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_blue" value="KBZPay (Merchant)" onclick="updateQR('blue')">
+                                    <label class="pm-card" for="pay_kbz_blue">
                                         <div class="pm-icon bg-info-subtle text-info">
                                             <i class="fas fa-university"></i>
                                         </div>
-                                        <span>KBZPay</span>
+                                        <span>KBZPay (Blue)</span>
                                     </label>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Section 2: QR & Upload -->
                         <div class="row g-4 mb-4">
-                            <div class="col-md-6">
+                            <div class="col-md-6 text-center">
                                 <div class="qr-container h-100">
                                     <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Scan QR</div>
-                                    <div class="qr-wrapper shadow-sm">
-                                        <img id="payment_qr" src="public/img/payments/wave_qr.png" alt="Scan QR" class="img-fluid">
+                                    <div class="qr-wrapper shadow-sm mx-auto">
+                                        <img id="payment_qr" src="public/img/payments/pay_yellow.jpg" alt="Scan QR" class="img-fluid">
                                     </div>
-                                    <div class="mt-3 text-center fw-800 smaller text-primary" id="qr_label">WavePay Merchant</div>
+                                    <div class="mt-3 text-center fw-800 smaller text-primary" id="qr_label">May Myat Noe Swe</div>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -554,7 +510,7 @@ include 'views/header.php';
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 border-0 shadow-lg" style="background:var(--bookhouse-orange); transition: 0.3s;">
+                        <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 border-0 shadow-lg" style="background:var(--bookhouse-orange);">
                             Confirm Return & Submit
                         </button>
                     </form>
@@ -577,9 +533,9 @@ include 'views/header.php';
 .btn-check:checked + .pm-card .pm-icon { background: #4f46e5 !important; color: #fff !important; }
 
 .qr-container, .upload-container { background: #f8fafc; padding: 20px; border-radius: 20px; border: 1px solid #f1f5f9; }
-.qr-wrapper { background: #fff; padding: 12px; border-radius: 16px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+.qr-wrapper { background: #fff; padding: 12px; border-radius: 16px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; max-width: 250px;}
 .upload-box { 
-    background: #fff; border-radius: 16px; height: 135px; border: 2px dashed #e2e8f0;
+    background: #fff; border-radius: 16px; min-height: 135px; border: 2px dashed #e2e8f0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     cursor: pointer; overflow: hidden; position: relative; transition: 0.2s;
 }
@@ -593,41 +549,31 @@ include 'views/header.php';
 </style>
 
 <script>
-function updateQR(method) {
-    const qrImg = document.getElementById('payment_qr');
-    const qrLabel = document.getElementById('qr_label');
-    
-    if (method === 'WavePay') {
-        qrImg.src = 'public/img/payments/wave_qr.png';
-        qrLabel.textContent = 'WavePay Merchant';
-    } else if (method === 'KPay') {
-        qrImg.src = 'public/img/payments/kpay_qr.png';
-        qrLabel.textContent = 'KPay Merchant';
-    } else if (method === 'KBZPay') {
-        qrImg.src = 'public/img/payments/kbzpay_qr.png';
-        qrLabel.textContent = 'KBZPay Merchant';
-    }
-}
-
 function initiateReturn(bookId, title, amount) {
     document.getElementById('modal_book_id').value = bookId;
-    document.getElementById('modal_book_title').textContent = title;
-    document.getElementById('modal_total_amount').textContent = amount.toLocaleString();
+    document.getElementById('modal_book_title').innerText = title;
+    document.getElementById('modal_total_amount').innerText = amount.toLocaleString();
     
-    // Reset form
-    document.getElementById('ss_input').value = '';
-    document.getElementById('ss_preview').classList.add('d-none');
-    document.getElementById('ss_placeholder').classList.remove('d-none');
-    document.getElementById('pay_wave').click();
-    
-    // Show modal
     const myModal = new bootstrap.Modal(document.getElementById('paymentModal'));
     myModal.show();
 }
 
+function updateQR(type) {
+    const qrImg = document.getElementById('payment_qr');
+    const qrLabel = document.getElementById('qr_label');
+    
+    if (type === 'yellow') {
+        qrImg.src = 'public/img/payments/pay_yellow.jpg';
+        qrLabel.innerText = 'May Myat Noe Swe';
+    } else {
+        qrImg.src = 'public/img/payments/pay_blue.jpg';
+        qrLabel.innerText = 'May Myat Noe Swe (Merchant)';
+    }
+}
+
 function previewScreenshot(input) {
     if (input.files && input.files[0]) {
-        var reader = new FileReader();
+        const reader = new FileReader();
         reader.onload = function(e) {
             document.getElementById('ss_img').src = e.target.result;
             document.getElementById('ss_preview').classList.remove('d-none');
