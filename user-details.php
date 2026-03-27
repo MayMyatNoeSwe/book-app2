@@ -428,6 +428,8 @@ include 'views/header.php';
                             <div class="text-end">
                                 <?php if ($isReturned): ?>
                                     <span class="ud-status returned">Returned</span>
+                                <?php elseif ($borrow['status'] === 'rejected'): ?>
+                                    <span class="ud-status cancelled">Rejected</span>
                                 <?php elseif ($isOverdue): ?>
                                     <span class="ud-status cancelled">Overdue</span>
                                 <?php else: ?>

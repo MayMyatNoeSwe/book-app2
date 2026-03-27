@@ -511,3 +511,18 @@ function setSetting(string $key, $value): bool
         return false;
     }
 }
+
+// Check for Maintenance Mode
+if (getSetting('maintenance_mode') === '1' && !isAdmin()) {
+    $currentFile = basename($_SERVER['PHP_SELF']);
+    // Pages that are EXEMPT from maintenance mode redirect
+    $exemptPages = ['maintenance.php', 'login.php', 'register.php'];
+    
+    // Check if we are in admin directory or on an exempt page
+    $isAdminDir = strpos($_SERVER['PHP_SELF'], '/admin/') !== false;
+    
+    if (!in_array($currentFile, $exemptPages) && !$isAdminDir) {
+        header("Location: " . baseUrl() . "/maintenance.php");
+        exit();
+    }
+}

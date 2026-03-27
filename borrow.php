@@ -44,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Fetch user's borrow history
 $activeBorrows = $library->getUserBorrows($userId, 'active');
 $pendingBorrows = $library->getUserBorrows($userId, 'pending');
+$rejectedBorrows = $library->getUserBorrows($userId, 'rejected');
 $pastBorrows = $library->getUserBorrows($userId, 'past');
 
 include 'views/header.php';
@@ -202,6 +203,11 @@ include 'views/header.php';
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="rejected-tab" data-bs-toggle="tab" data-bs-target="#rejected" type="button" role="tab" aria-selected="false">
+                    Rejected Requests (<?= count($rejectedBorrows) ?>)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="past-tab" data-bs-toggle="tab" data-bs-target="#past" type="button" role="tab" aria-selected="false">
                     Past History (<?= count($pastBorrows) ?>)
                 </button>
@@ -257,7 +263,8 @@ include 'views/header.php';
                                             $p = 0;
                                             if ($isOverdue): 
                                                 $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
-                                                $p = $overdueDays * 500;
+                                                $finePerDay = (int)getSetting('fine_per_day', 500);
+                                                $p = $overdueDays * $finePerDay;
                                             ?>
                                                 <div class="d-flex justify-content-between text-danger mb-1">
                                                     <span>Penalty:</span>
@@ -326,6 +333,50 @@ include 'views/header.php';
             <?php endif; ?>
         </div>
 
+        <!-- Rejected Tab -->
+        <div class="tab-pane fade" id="rejected" role="tabpanel" tabindex="0">
+            <?php if (empty($rejectedBorrows)): ?>
+                <div class="bw-empty">
+                    <i class="fas fa-times-circle"></i>
+                    <h4>No rejected requests</h4>
+                    <p>Requests that are declined by admin will show up here.</p>
+                </div>
+            <?php else: ?>
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    <?php foreach ($rejectedBorrows as $b): ?>
+                        <div class="col">
+                            <div class="bw-card">
+                                <div class="bw-card-top">
+                                    <img src="<?= getBookCoverUrl((object)$b, $b['title'], $b['author']) ?>" class="bw-cover"
+                                         onerror="this.src='<?= getDummyBookCover($b['title'], $b['author'], 150, 200) ?>'">
+                                    <div class="bw-info">
+                                        <div class="bw-cat"><?= e($b['category']) ?></div>
+                                        <h5><a href="book-details.php?id=<?= $b['book_id'] ?>"><?= e($b['title']) ?></a></h5>
+                                        <div class="bw-author">by <?= e($b['author']) ?></div>
+                                        
+                                        <div class="bw-status overdue" style="background:rgba(239,68,68,0.1); color:#ef4444;"><i class="fas fa-times-circle"></i> Rejected</div>
+                                        <?php if ($b['admin_notes']): ?>
+                                            <div class="mt-2 p-2 rounded-3 bg-danger-subtle border border-danger-subtle small" style="font-size:11px;">
+                                                <div class="fw-bold mb-1">Reason:</div>
+                                                <div class="text-muted"><?= e($b['admin_notes']) ?></div>
+                                            </div>
+                                        <?php endif; ?>
+                                        
+                                        <div class="bw-time">
+                                            <i class="far fa-calendar-times"></i> Rejected: <?= date('M j, Y', strtotime($b['borrowed_at'])) ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="bw-card-actions">
+                                    <div class="bw-btn-returned" style="border-style: solid;"><i class="fas fa-times me-2"></i>Request Declined</div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
         <!-- Past Tab -->
         <div class="tab-pane fade" id="past" role="tabpanel" tabindex="0">
             <?php if (empty($pastBorrows)): ?>
@@ -347,14 +398,7 @@ include 'views/header.php';
                                         <h5><a href="book-details.php?id=<?= $b['book_id'] ?>"><?= e($b['title']) ?></a></h5>
                                         <div class="bw-author">by <?= e($b['author']) ?></div>
                                         
-                                        <?php if ($b['status'] === 'rejected'): ?>
-                                            <div class="bw-status overdue" style="background:rgba(239,68,68,0.05);"><i class="fas fa-times-circle"></i> Rejected</div>
-                                            <?php if ($b['admin_notes']): ?>
-                                                <div class="mt-1 small text-muted">Reason: <?= e($b['admin_notes']) ?></div>
-                                            <?php endif; ?>
-                                        <?php else: ?>
-                                            <div class="bw-status returned" style="background:rgba(0,0,0,0.05); color:var(--bookhouse-text-muted);"><i class="fas fa-check-circle"></i> Returned</div>
-                                        <?php endif; ?>
+                                        <div class="bw-status returned" style="background:rgba(0,0,0,0.05); color:var(--bookhouse-text-muted);"><i class="fas fa-check-circle"></i> Returned</div>
                                         
                                         <div class="bw-time mt-2">
                                             <div>Borrowed: <?= date('M j, Y', strtotime($b['borrowed_at'])) ?></div>
@@ -390,11 +434,7 @@ include 'views/header.php';
                                 </div>
                                 <div class="bw-card-actions">
                                     <div class="bw-btn-returned">
-                                        <?php if ($b['status'] === 'rejected'): ?>
-                                            <i class="fas fa-times me-2"></i>Rejected
-                                        <?php else: ?>
-                                            <i class="fas fa-check me-2"></i>Completed
-                                        <?php endif; ?>
+                                        <i class="fas fa-check me-2"></i>Completed
                                     </div>
                                 </div>
                             </div>

@@ -77,7 +77,8 @@ foreach ($records as &$r) {
     $r['calculated_penalty'] = 0;
     if ($r['is_overdue']) {
         $r['overdue_days'] = (int)floor((time() - strtotime($r['due_date'])) / 86400);
-        $r['calculated_penalty'] = $r['overdue_days'] * 500;
+        $finePerDay = (int)getSetting('fine_per_day', 500);
+        $r['calculated_penalty'] = $r['overdue_days'] * $finePerDay;
     }
 }
 unset($r);

@@ -289,7 +289,9 @@ class Library
         } elseif ($type === 'pending') {
             $sql .= " AND bh.status = 'pending'";
         } elseif ($type === 'past') {
-            $sql .= " AND (bh.returned_at IS NOT NULL OR bh.status = 'rejected')";
+            $sql .= " AND bh.returned_at IS NOT NULL AND bh.status = 'returned'";
+        } elseif ($type === 'rejected') {
+            $sql .= " AND bh.status = 'rejected'";
         }
         
         $sql .= " ORDER BY bh.borrowed_at DESC";
