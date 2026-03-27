@@ -369,6 +369,7 @@ body {
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end bh-dropdown shadow border-0">
                     <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/user-details.php"><i class="far fa-user me-2"></i>My Profile</a></li>
+                    <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/membership.php"><i class="fas fa-crown me-2"></i>Membership</a></li>
                     <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/borrow.php"><i class="fas fa-book-reader me-2"></i>Borrowing</a></li>
                     <li><a class="dropdown-item bh-dropdown-item" href="<?= baseUrl() ?>/user-details.php#orders-section"><i class="fas fa-shopping-bag me-2"></i>Orders</a></li>
                     <?php if (isAdmin()): ?>
