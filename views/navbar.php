@@ -381,7 +381,9 @@ body {
             </div>
             <?php else: ?>
             <a href="<?= baseUrl() ?>/login.php" class="bh-nav-link d-none d-lg-block">Log In</a>
-            <a href="<?= baseUrl() ?>/register.php" class="button btn rounded-pill px-4 d-none d-md-block shadow-sm">Join</a>
+            <?php if (getSetting('allow_registration', '1') === '1'): ?>
+                <a href="<?= baseUrl() ?>/register.php" class="button btn rounded-pill px-4 d-none d-md-block shadow-sm">Join</a>
+            <?php endif; ?>
             <?php endif; ?>
 
             <!-- Mobile Hamburger -->
@@ -410,7 +412,9 @@ body {
         <?php if (!Auth::check()): ?>
             <li class="mt-4">
                 <a href="<?= baseUrl() ?>/login.php" class="btn btn-outline-primary rounded-pill w-100 mb-2">Log In</a>
-                <a href="<?= baseUrl() ?>/register.php" class="btn btn-primary rounded-pill w-100">Create Account</a>
+                <?php if (getSetting('allow_registration', '1') === '1'): ?>
+                    <a href="<?= baseUrl() ?>/register.php" class="btn btn-primary rounded-pill w-100">Create Account</a>
+                <?php endif; ?>
             </li>
         <?php endif; ?>
     </ul>

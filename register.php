@@ -14,6 +14,43 @@ if (Auth::check()) {
     exit;
 }
 
+// Check if registration is allowed
+$isRegistrationEnabled = getSetting('allow_registration', '1') === '1';
+if (!$isRegistrationEnabled) {
+    $pageTitle = 'Registration Disabled - My Library';
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><?= $pageTitle ?></title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+        <style>
+            body { background: #FFF3F0; font-family: 'Inter', sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; }
+            .notice-card { background: white; border-radius: 30px; padding: 50px; text-align: center; max-width: 500px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.05); }
+            h2 { font-family: 'Playfair Display', serif; color: #3D405B; margin-bottom: 20px; font-weight: 800; }
+            p { color: #636E72; line-height: 1.6; margin-bottom: 30px; }
+            .btn-home { background: #E07A5F; color: white; border-radius: 12px; padding: 12px 30px; font-weight: 700; text-decoration: none; display: inline-block; transition: all 0.3s; }
+            .btn-home:hover { background: #cf6a50; transform: translateY(-3px); color: white; }
+            .icon-box { font-size: 4rem; color: #E07A5F; margin-bottom: 25px; opacity: 0.2; }
+        </style>
+    </head>
+    <body>
+        <div class="notice-card animate__animated animate__fadeInUp">
+            <div class="icon-box"><i class="fas fa-user-lock"></i></div>
+            <h2>Membership Closed</h2>
+            <p>We are currently not accepting new member registrations at this time. Please check back later or contact our support team if you have an inquiry.</p>
+            <a href="index.php" class="btn-home"><i class="fas fa-arrow-left me-2"></i>Return Home</a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
 $config = require 'config/database.php';
 $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
 $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
