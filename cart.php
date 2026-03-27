@@ -25,6 +25,19 @@ $cartItems = $cart->getItems($userId);
 $cartTotal = $cart->getTotal($userId);
 $cartCount = $cart->getCount($userId);
 
+// Fetch membership benefits for JS
+$stmt = $pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
+$stmt->execute([$userId]);
+$userTier = $stmt->fetchColumn() ?: 'bronze';
+
+$benefitsMap = [
+    'bronze'   => ['discount' => 0,    'free_shipping' => false],
+    'silver'   => ['discount' => 0.10, 'free_shipping' => false],
+    'gold'     => ['discount' => 0.20, 'free_shipping' => false],
+    'platinum' => ['discount' => 0.25, 'free_shipping' => true]
+];
+$userBenefits = $benefitsMap[strtolower($userTier)] ?? $benefitsMap['bronze'];
+
 include 'views/header.php';
 ?>
 
@@ -528,9 +541,15 @@ include 'views/header.php';
                             <hr class="ct-summary-divider mt-4">
 
                             <div class="ct-summary-row">
-                                <span>Subtotal (<?= $cartCount ?> items)</span>
-                                <span class="val" id="subtotal"><?= number_format($cartTotal) ?> Ks</span>
+                                <span>Item Subtotal (<?= $cartCount ?> items)</span>
+                                <span class="val" id="subtotal"><?= number_format($cartTotal / (1 - $userBenefits['discount'])) ?> Ks</span>
                             </div>
+                            <?php if ($userBenefits['discount'] > 0): ?>
+                            <div class="ct-summary-row" style="color: #10b981;">
+                                <span style="font-weight: 700;">Membership Discount (<?= ucfirst($userTier) ?>)</span>
+                                <span class="val" style="color: #10b981;">- <?= number_format(($cartTotal / (1 - $userBenefits['discount'])) * $userBenefits['discount']) ?> Ks</span>
+                            </div>
+                            <?php endif; ?>
                             <div class="ct-summary-row">
                                 <span style="display: flex; align-items:center; gap:6px;">Shipping <i class="fas fa-info-circle text-muted" title="Free standard delivery for Yangon when ordering 5+ books" style="font-size:11px; cursor:help;"></i></span>
                                 <span class="val" id="shipping-cost">1,500 Ks</span>
@@ -572,6 +591,7 @@ include 'views/header.php';
 <script>
 const cartTotal = <?= (int)$cartTotal ?>;
 const cartCount = <?= (int)$cartCount ?>;
+const userBenefits = <?= json_encode($userBenefits) ?>;
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
@@ -585,10 +605,6 @@ function updateShippingCost() {
     const totalEl = document.getElementById('total');
     const zoneLabel = document.getElementById('zone-label');
     const methodContainer = document.getElementById('method-container');
-    
-    // Check digital only
-    const isDigitalOnly = <?= $cartTotal > 0 ? 'false' : 'true' ?>; // Simple check for demo purposes
-    // Better: let the PHP count physical items.
     
     // Update methods UI based on location
     const currentMethod = document.querySelector('input[name="delivery-method"]:checked')?.value || 'std';
@@ -676,8 +692,12 @@ function updateShippingCost() {
         cost += 1500; // Express surcharge
     }
     
-    // Free Shipping Rule (Standard/COD/Bus is free over 5 books for Yangon only, Express gets 1.5k discount)
-    if (cartCount >= 5 && location.includes('ygn')) {
+    // Platinum Free Shipping Rule
+    if (userBenefits.free_shipping) {
+        cost = 0;
+    }
+    // Standard Free Shipping Rule (5+ books for Yangon)
+    else if (cartCount >= 5 && location.includes('ygn')) {
         if (method === 'std') {
             cost = 0;
         } else if (method === 'exp') {

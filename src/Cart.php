@@ -67,7 +67,26 @@ class Cart
     }
 
     /**
-     * Get cart total
+     * Get membership benefits for shopping
+     */
+    private function getShoppingBenefits(int $userId): array
+    {
+        $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $tier = $stmt->fetchColumn() ?: 'bronze';
+
+        $benefits = [
+            'bronze'   => ['discount' => 0,    'free_shipping' => false],
+            'silver'   => ['discount' => 0.10, 'free_shipping' => false],
+            'gold'     => ['discount' => 0.20, 'free_shipping' => false],
+            'platinum' => ['discount' => 0.25, 'free_shipping' => true]
+        ];
+
+        return $benefits[strtolower($tier)] ?? $benefits['bronze'];
+    }
+
+    /**
+     * Get cart total with discount applied
      */
     public function getTotal(int $userId): float
     {
@@ -78,7 +97,10 @@ class Cart
             WHERE c.user_id = ?
         ");
         $stmt->execute([$userId]);
-        return (float) $stmt->fetchColumn();
+        $subtotal = (float) ($stmt->fetchColumn() ?: 0);
+
+        $benefits = $this->getShoppingBenefits($userId);
+        return $subtotal * (1 - $benefits['discount']);
     }
 
     /**
@@ -135,17 +157,23 @@ class Cart
         try {
             $this->pdo->beginTransaction();
 
+            $benefits = $this->getShoppingBenefits($userId);
+
             // Get cart items
             $items = $this->getItems($userId);
             if (empty($items)) {
                 throw new \Exception("Cart is empty");
             }
 
-            // Calculate subtotal
-            $total = $this->getTotal($userId);
+            // Calculate total with discount
+            $totalWithDiscount = $this->getTotal($userId);
 
             $shippingCost = (float) ($orderData['shipping_cost'] ?? 0);
-            $totalAmount = $total + $shippingCost;
+            if ($benefits['free_shipping']) {
+                $shippingCost = 0;
+            }
+            
+            $totalAmount = $totalWithDiscount + $shippingCost;
 
             // Generate order number
             $orderNumber = 'ORD-' . date('Ymd') . '-' . strtoupper(substr(md5(uniqid()), 0, 8));
@@ -169,18 +197,19 @@ class Cart
 
             $orderId = $this->pdo->lastInsertId();
 
-            // Create order items
+            // Create order items (apply discount to unit price too for consistency)
             $stmt = $this->pdo->prepare("
                 INSERT INTO order_items (order_id, book_id, quantity, price)
                 VALUES (?, ?, ?, ?)
             ");
 
             foreach ($items as $item) {
+                $discountedPrice = $item['price'] * (1 - $benefits['discount']);
                 $stmt->execute([
                     $orderId,
-                    $item['book_id'], // This is already a string from getItems
+                    $item['book_id'],
                     $item['quantity'],
-                    $item['price']
+                    $discountedPrice
                 ]);
             }
 

@@ -143,14 +143,35 @@ class Library
     }
     // ====================== Borrowing & Due Dates =====================
     // ================ business logic ================
+    /**
+     * Get membership rules for a given user
+     */
+    private function getMembershipRules(int $userId): array
+    {
+        $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $tier = $stmt->fetchColumn() ?: 'bronze';
+
+        $rules = [
+            'bronze'   => ['limit' => 3, 'days' => 14],
+            'silver'   => ['limit' => 3, 'days' => 14],
+            'gold'     => ['limit' => 5, 'days' => 14],
+            'platinum' => ['limit' => 100, 'days' => 30]
+        ];
+
+        return $rules[strtolower($tier)] ?? $rules['bronze'];
+    }
+
     public function borrowBook(string $bookId, int $userId): bool
     {
-        // Check if user has already borrowed/pending 3 books
+        $rules = $this->getMembershipRules($userId);
+        
+        // Check unreturned books against tier limit
         $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
         $stmt->execute([$userId]);
         $unreturnedBooks = (int)$stmt->fetchColumn();
         
-        if ($unreturnedBooks >= 3) {
+        if ($unreturnedBooks >= $rules['limit']) {
             return false;
         }
 
@@ -169,7 +190,7 @@ class Library
         $book = $this->getBookById($bookId);
         if (!$book || !$book->isAvailable()) return false;
 
-        $dueDate = date('Y-m-d', strtotime('+14 days'));
+        $dueDate = date('Y-m-d', strtotime('+' . $rules['days'] . ' days'));
         $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, book_id, due_date, `status`) VALUES (?,?,?,'pending')");
         $stmt->execute([$userId, $bookId, $dueDate]);
         return true;
@@ -183,10 +204,11 @@ class Library
         $record = $stmt->fetch(\PDO::FETCH_ASSOC);
         if (!$record) return false;
 
+        $rules = $this->getMembershipRules($record['user_id']);
         $book = $this->getBookById($record['book_id']);
         if (!$book || !$book->borrowCopy()) return false;
 
-        $dueDate = date('Y-m-d', strtotime('+14 days'));
+        $dueDate = date('Y-m-d', strtotime('+' . $rules['days'] . ' days'));
         $stmt = $this->pdo->prepare("UPDATE borrowing_history SET `status` = 'approved', due_date = ?, approved_at = NOW() WHERE id = ?");
         $stmt->execute([$dueDate, $borrowId]);
         $this->updateBook($book);
