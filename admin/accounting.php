@@ -423,7 +423,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const incomeData = <?= json_encode($stats['income_by_category']) ?>;
     const incomeLabels = Object.keys(incomeData).map(k => k.replace('_', ' ').toUpperCase());
-    const incomeValues = Object.values(incomeData);
+    const incomeValues = Object.values(incomeData).map(Number); // Ensure numeric values
 
     new Chart(ctx, {
         type: 'doughnut',
@@ -457,8 +457,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         label: function(context) {
                             let label = context.label || '';
                             let value = context.parsed || 0;
-                            let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            let pct = ((value / total) * 100).toFixed(1);
+                            let total = context.dataset.data.reduce((a, b) => Number(a) + Number(b), 0);
+                            let pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
                             return ` ${label}: ${value.toLocaleString()} Ks (${pct}%)`;
                         }
                     }

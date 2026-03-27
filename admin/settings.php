@@ -21,10 +21,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         setFlashMessage('General settings updated successfully.', 'success');
         redirect(baseUrl() . '/admin/settings.php#general');
     } elseif ($_POST['action'] === 'update_library') {
-        setSetting('borrow_limit', $_POST['borrow_limit'] ?? '5');
+        // Global defaults
+        setSetting('borrow_limit', $_POST['borrow_limit'] ?? '3');
         setSetting('borrow_duration', $_POST['borrow_duration'] ?? '14');
         setSetting('fine_per_day', $_POST['fine_per_day'] ?? '500');
-        setFlashMessage('Library rules updated successfully.', 'success');
+        
+        // Tier specific overrides
+        $tiers = ['silver', 'gold', 'platinum'];
+        foreach ($tiers as $tier) {
+            setSetting($tier . '_borrow_limit', $_POST[$tier . '_borrow_limit'] ?? $_POST['borrow_limit']);
+            setSetting($tier . '_borrow_duration', $_POST[$tier . '_borrow_duration'] ?? $_POST['borrow_duration']);
+            setSetting($tier . '_fine_per_day', $_POST[$tier . '_fine_per_day'] ?? $_POST['fine_per_day']);
+        }
+
+        setFlashMessage('Library tier policies updated successfully.', 'success');
         redirect(baseUrl() . '/admin/settings.php#library');
     } elseif ($_POST['action'] === 'update_preferences') {
         setSetting('maintenance_mode', isset($_POST['maintenance_mode']) ? '1' : '0');
@@ -119,34 +129,80 @@ renderAdminLayout('System Settings', function() {
                 <!-- Library Rules -->
                 <div class="tab-pane fade" id="library">
                     <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
-                        <h5 class="fw-800 text-dark mb-4">Library Rules & Policies</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="fw-800 text-dark mb-0">Library Rules & Tier Policies</h5>
+                            <span class="badge bg-indigo-soft text-indigo fw-bold p-2 px-3 rounded-pill"><i class="fas fa-crown me-2"></i>Multi-Tier Enabled</span>
+                        </div>
+                        
                         <form action="" method="POST">
                             <input type="hidden" name="action" value="update_library">
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label smallest fw-bold text-uppercase text-muted">Max Books per User</label>
-                                    <div class="input-group">
-                                        <input type="number" name="borrow_limit" class="form-control rounded-start-3" value="<?= e(getSetting('borrow_limit', 5)) ?>">
-                                        <span class="input-group-text bg-lightest border-start-0 rounded-end-3">Books</span>
+                            
+                            <!-- Default Global Rules -->
+                            <div class="p-4 bg-lightest rounded-4 mb-5 border border-light">
+                                <h6 class="fw-800 text-muted smallest text-uppercase mb-3">Default Global Rules (For Guest/Bronze)</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label smallest fw-bold text-muted">MAX BOOKS</label>
+                                        <input type="number" name="borrow_limit" class="form-control rounded-3" value="<?= e(getSetting('borrow_limit', 3)) ?>">
                                     </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label smallest fw-bold text-uppercase text-muted">Borrow Duration</label>
-                                    <div class="input-group">
-                                        <input type="number" name="borrow_duration" class="form-control rounded-start-3" value="<?= e(getSetting('borrow_duration', 14)) ?>">
-                                        <span class="input-group-text bg-lightest border-start-0 rounded-end-3">Days</span>
+                                    <div class="col-md-4">
+                                        <label class="form-label smallest fw-bold text-muted">DURATION (DAYS)</label>
+                                        <input type="number" name="borrow_duration" class="form-control rounded-3" value="<?= e(getSetting('borrow_duration', 14)) ?>">
                                     </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label smallest fw-bold text-uppercase text-muted">Overdue Fine (per Day)</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text bg-lightest border-end-0 rounded-start-3"><?= getSetting('currency', 'MMK') ?></span>
-                                        <input type="number" name="fine_per_day" class="form-control rounded-end-3" value="<?= e(getSetting('fine_per_day', 500)) ?>">
+                                    <div class="col-md-4">
+                                        <label class="form-label smallest fw-bold text-muted">OVERDUE FINE (PER DAY)</label>
+                                        <input type="number" name="fine_per_day" class="form-control rounded-3" value="<?= e(getSetting('fine_per_day', 500)) ?>">
                                     </div>
                                 </div>
                             </div>
-                            <div class="mt-4 pt-3 border-top">
-                                <button type="submit" class="btn btn-primary px-4 fw-bold">Update Policies</button>
+
+                            <!-- Tier Specific Overrides -->
+                            <h6 class="fw-800 text-dark smallest text-uppercase mb-3">Tier Specific Overrides (Privileges)</h6>
+                            <div class="table-responsive">
+                                <table class="table table-borderless align-middle tr-table" style="background:#f8fafc; border-radius:16px; overflow:hidden;">
+                                    <thead>
+                                        <tr>
+                                            <th class="ps-4">MEMBERSHIP TIER</th>
+                                            <th>MAX BOOKS</th>
+                                            <th>DURATION (DAYS)</th>
+                                            <th class="pe-4">FINE (PER DAY)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody style="border-top:1px solid #eef2f7;">
+                                        <?php 
+                                        $tiers = [
+                                            ['key' => 'silver', 'name' => 'Silver Member', 'icon' => 'medal', 'color' => '#94a3b8'],
+                                            ['key' => 'gold', 'name' => 'Gold Member', 'icon' => 'crown', 'color' => '#f59e0b'],
+                                            ['key' => 'platinum', 'name' => 'Platinum Member', 'icon' => 'gem', 'color' => '#6366f1']
+                                        ];
+                                        foreach ($tiers as $tier):
+                                        ?>
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="d-flex align-items-center gap-3 py-2">
+                                                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:36px; height:36px; background:<?= $tier['color'] ?>15; color:<?= $tier['color'] ?>;">
+                                                        <i class="fas fa-<?= $tier['icon'] ?>"></i>
+                                                    </div>
+                                                    <span class="fw-800 text-dark small"><?= $tier['name'] ?></span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <input type="number" name="<?= $tier['key'] ?>_borrow_limit" class="form-control form-control-sm rounded-3 w-75" value="<?= getSetting($tier['key'].'_borrow_limit', getSetting('borrow_limit', 3)) ?>">
+                                            </td>
+                                            <td>
+                                                <input type="number" name="<?= $tier['key'] ?>_borrow_duration" class="form-control form-control-sm rounded-3 w-75" value="<?= getSetting($tier['key'].'_borrow_duration', getSetting('borrow_duration', 14)) ?>">
+                                            </td>
+                                            <td class="pe-4">
+                                                <input type="number" name="<?= $tier['key'] ?>_fine_per_day" class="form-control form-control-sm rounded-3 w-75" value="<?= getSetting($tier['key'].'_fine_per_day', getSetting('fine_per_day', 500)) ?>">
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-5 pt-3 border-top">
+                                <button type="submit" class="btn btn-primary px-5 py-2 fw-900 rounded-pill shadow-sm"><i class="fas fa-sync-alt me-2"></i>Apply Multi-Tier Policies</button>
                             </div>
                         </form>
                     </div>

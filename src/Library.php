@@ -147,20 +147,24 @@ class Library
      * Get membership rules for a given user
      */
     private function getMembershipRules(int $userId): array
-    {
-        $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $tier = $stmt->fetchColumn() ?: 'bronze';
+{
+    $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $tier = strtolower($stmt->fetchColumn() ?: 'bronze');
 
-        $rules = [
-            'bronze'   => ['limit' => 3, 'days' => 14],
-            'silver'   => ['limit' => 3, 'days' => 14],
-            'gold'     => ['limit' => 5, 'days' => 14],
-            'platinum' => ['limit' => 100, 'days' => 30]
-        ];
+    // Fetch dynamic rules from settings using global getSetting helper
+    $limit = (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
+    $days = (int)getSetting($tier . '_borrow_duration', getSetting('borrow_duration', 14));
+    
+    // Penalties can also be dynamic
+    $fine = (int)getSetting($tier . '_fine_per_day', getSetting('fine_per_day', 500));
 
-        return $rules[strtolower($tier)] ?? $rules['bronze'];
-    }
+    return [
+        'limit' => $limit,
+        'days'  => $days,
+        'fine'  => $fine
+    ];
+}
 
     public function borrowBook(string $bookId, int $userId): bool
     {

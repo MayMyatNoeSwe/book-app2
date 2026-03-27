@@ -29,8 +29,8 @@ $tiers = [
         'color' => '#cd7f32',
         'gradient' => 'linear-gradient(135deg, #cd7f32, #8b4513)',
         'benefits' => [
-            'Borrow Limit: 3 Books',
-            'Duration: 14 Days',
+            'Borrow Limit: ' . getSetting('borrow_limit', 3) . ' Books',
+            'Duration: ' . getSetting('borrow_duration', 14) . ' Days',
             'Shopping: Standard Pricing',
             'Support: Standard'
         ]
@@ -41,8 +41,8 @@ $tiers = [
         'color' => '#bdc3c7',
         'gradient' => 'linear-gradient(135deg, #bdc3c7, #2c3e50)',
         'benefits' => [
-            'Borrow Limit: 3 Books',
-            'Duration: 14 Days + Extension',
+            'Borrow Limit: ' . getSetting('silver_borrow_limit', 3) . ' Books',
+            'Duration: ' . getSetting('silver_borrow_duration', 14) . ' Days + Extension',
             'Shopping: 10% Discount',
             'Support: Standard'
         ]
@@ -53,8 +53,8 @@ $tiers = [
         'color' => '#f1c40f',
         'gradient' => 'linear-gradient(135deg, #f1c40f, #f39c12)',
         'benefits' => [
-            'Borrow Limit: 5 Books',
-            'Duration: 14 Days + Extension',
+            'Borrow Limit: ' . getSetting('gold_borrow_limit', 5) . ' Books',
+            'Duration: ' . getSetting('gold_borrow_duration', 14) . ' Days + Extension',
             'Shopping: 20% Discount',
             'Support: Standard'
         ]
@@ -65,8 +65,8 @@ $tiers = [
         'color' => '#1e293b',
         'gradient' => 'linear-gradient(135deg, #1e293b, #334155)',
         'benefits' => [
-            'Borrow Limit: Unlimited',
-            'Duration: Flexible',
+            'Borrow Limit: ' . getSetting('platinum_borrow_limit', 100) . ' Books',
+            'Duration: ' . getSetting('platinum_borrow_duration', 30) . ' Days',
             'Shopping: 25% Disc + Free Ship',
             'Support: Priority'
         ]
