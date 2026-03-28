@@ -1,4 +1,9 @@
 <?php
+// Ensure environment variables are loaded if not already present
+if (!isset($_ENV['DB_HOST']) && file_exists(__DIR__ . '/../.env')) {
+    require_once __DIR__ . '/../includes/env_loader.php';
+}
+
 return [
     'host' => $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost',
     'dbname' => $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? getenv('DB_NAME') ?: 'book_library',
