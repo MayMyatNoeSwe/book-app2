@@ -397,12 +397,12 @@ class Library
             if (!$request) return false;
 
             // 1. Generate a single-use Redemption Code
-            // 1. Generate a single-use Redemption Code
+            // 1. Generate a multi-user Redemption Code (Limit 5 users)
             // Using a distinct prefix to differentiate from bulk-generated keys
             $code = strtoupper('MS-' . bin2hex(random_bytes(2)) . '-' . bin2hex(random_bytes(2)));
             
             $stmt = $this->pdo->prepare("INSERT INTO membership_codes (code, tier, usage_limit) VALUES (?, ?, ?)");
-            $stmt->execute([$code, $request['tier'], 1]);
+            $stmt->execute([$code, $request['tier'], 5]);
 
             // 2. Mark request as approved and store the delivered code
             $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved', redeem_code = ? WHERE id = ?");

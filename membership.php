@@ -46,8 +46,8 @@ foreach($subRecords as $sr) {
 }
 $currentTier = strtolower($pdo->query("SELECT membership_tier FROM users WHERE id = $userId")->fetchColumn() ?: 'bronze');
 
-// Fetch approved requests with codes for this user
-$stmt = $pdo->prepare("SELECT tier, redeem_code, created_at FROM membership_requests WHERE user_id = ? AND status = 'approved' AND redeem_code IS NOT NULL ORDER BY created_at DESC LIMIT 4");
+// Fetch all approved requests with codes for this user
+$stmt = $pdo->prepare("SELECT tier, redeem_code, created_at FROM membership_requests WHERE user_id = ? AND status = 'approved' AND redeem_code IS NOT NULL ORDER BY id DESC");
 $stmt->execute([$userId]);
 $releasedCodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -417,6 +417,7 @@ function submitMembershipRequest(tier, method, file) {
     });
 }
 
+function confirmUpgrade(tierKey, tierName) {
     Swal.fire({
         title: 'Processing...',
         allowOutsideClick: false,
