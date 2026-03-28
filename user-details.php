@@ -24,6 +24,9 @@ $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$userId]);
 $user = $stmt->fetch();
 
+$activeSubs = Auth::getSubscriptions();
+$tier = strtolower($user['membership_tier'] ?? 'bronze');
+
 // Fetch statistics
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
 $stmt->execute([$userId]);
@@ -324,38 +327,31 @@ include 'views/header.php';
                             </div>
                             <div class="card-barcode">
                                 <svg width="120" height="30" viewBox="0 0 120 30" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="0" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="4" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="7" y="0" width="3" height="30" fill="#000" />
-                                    <rect x="12" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="15" y="0" width="4" height="30" fill="#000" />
-                                    <rect x="22" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="25" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="30" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="33" y="0" width="3" height="30" fill="#000" />
-                                    <rect x="38" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="42" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="46" y="0" width="4" height="30" fill="#000" />
-                                    <rect x="52" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="55" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="60" y="0" width="3" height="30" fill="#000" />
-                                    <rect x="65" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="68" y="0" width="4" height="30" fill="#000" />
-                                    <rect x="74" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="78" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="81" y="0" width="3" height="30" fill="#000" />
-                                    <rect x="86" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="90" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="94" y="0" width="4" height="30" fill="#000" />
-                                    <rect x="100" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="103" y="0" width="2" height="30" fill="#000" />
-                                    <rect x="108" y="0" width="3" height="30" fill="#000" />
-                                    <rect x="113" y="0" width="1" height="30" fill="#000" />
-                                    <rect x="116" y="0" width="4" height="30" fill="#000" />
+                                    <?php for($i=0; $i<120; $i+=4): ?>
+                                        <rect x="<?= $i ?>" y="0" width="<?= rand(1,3) ?>" height="30" fill="#000" />
+                                    <?php endfor; ?>
                                 </svg>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Active Subscriptions -->
+                    <?php if (!empty($activeSubs)): ?>
+                        <div class="mt-4 px-1 text-start">
+                             <h6 class="text-uppercase letter-spacing-1 fw-800 smaller text-muted mb-3 opacity-75" style="font-size: 10px;">
+                                <i class="fas fa-layer-group me-2"></i>Active Memberships
+                            </h6>
+                            <div class="d-flex flex-wrap gap-2">
+                                <?php foreach ($activeSubs as $subTier => $expiresAt): ?>
+                                    <div class="p-2 px-3 rounded-pill bg-white border d-flex align-items-center gap-2 shadow-sm">
+                                        <div class="tier-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--bookhouse-orange);"></div>
+                                        <span class="fw-800 text-uppercase text-dark" style="font-size: 10px;"><?= e($subTier) ?></span>
+                                        <span class="text-muted" style="font-size: 10px;">• Ends <?= date('M j, Y', strtotime($expiresAt)) ?></span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -551,35 +547,32 @@ include 'views/header.php';
                             <i class="fas fa-check-circle text-success mt-1"></i>
                             <div>
                                 <strong>Borrow Limit:</strong> 
-                                <?php if(($user['membership_tier'] ?? 'bronze') === 'gold'): ?> 5 Books
-                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> Unlimited
-                                <?php else: ?> 3 Books
-                                <?php endif; ?>
+                                <?php 
+                                    $tier = strtolower($user['membership_tier'] ?? 'bronze');
+                                    $limit = ($tier === 'platinum') ? 'Unlimited' : getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3)) . ' Books';
+                                    echo $limit;
+                                ?>
                             </div>
                         </li>
                         <li class="mb-2 d-flex gap-2">
                             <i class="fas fa-check-circle text-success mt-1"></i>
                             <div>
-                                <strong>Duration:</strong> 14 Days
-                                <?php if(($user['membership_tier'] ?? 'bronze') !== 'bronze'): ?> (Extendable)<?php endif; ?>
+                                <strong>Duration:</strong> 
+                                <?= getSetting(strtolower($user['membership_tier'] ?? 'bronze') . '_borrow_duration', getSetting('borrow_duration', 14)) ?> Days
                             </div>
                         </li>
                         <li class="mb-2 d-flex gap-2">
                             <i class="fas fa-check-circle text-success mt-1"></i>
                             <div>
                                 <strong>Shopping:</strong> 
-                                <?php if(($user['membership_tier'] ?? 'bronze') === 'silver'): ?> 10% Discount
-                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'gold'): ?> 20% Discount
-                                <?php elseif(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> 25% Discount + Free Shipping
-                                <?php else: ?> Standard Pricing
-                                <?php endif; ?>
+                                <?= getSetting($tier . '_discount', 'Standard Pricing') ?>
                             </div>
                         </li>
                         <li class="d-flex gap-2">
                             <i class="fas fa-check-circle text-success mt-1"></i>
                             <div>
-                                <strong>Support:</strong> Standard
-                                <?php if(($user['membership_tier'] ?? 'bronze') === 'platinum'): ?> (Priority)<?php endif; ?>
+                                <strong>Support:</strong> 
+                                <?= getSetting($tier . '_support', 'Standard') ?>
                             </div>
                         </li>
                     </ul>

@@ -18,9 +18,8 @@ $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config
 $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
 
 $userId = Auth::id();
-$stmt = $pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
-$stmt->execute([$userId]);
-$currentTier = strtolower($stmt->fetchColumn() ?: 'bronze');
+$activeSubs = Auth::getSubscriptions(); // [tier => expires_at]
+$currentTier = strtolower($pdo->query("SELECT membership_tier FROM users WHERE id = $userId")->fetchColumn() ?: 'bronze');
 
 $tiers = [
     'bronze' => [
@@ -31,44 +30,44 @@ $tiers = [
         'benefits' => [
             'Borrow Limit: ' . getSetting('borrow_limit', 3) . ' Books',
             'Duration: ' . getSetting('borrow_duration', 14) . ' Days',
-            'Shopping: Standard Pricing',
-            'Support: Standard'
+            'Shopping: ' . getSetting('bronze_discount', 'Standard Pricing'),
+            'Support: ' . getSetting('bronze_support', 'Standard')
         ]
     ],
     'silver' => [
         'name' => 'Silver',
-        'price' => 10000,
+        'price' => (int)getSetting('silver_price', 10000),
         'color' => '#bdc3c7',
         'gradient' => 'linear-gradient(135deg, #bdc3c7, #2c3e50)',
         'benefits' => [
-            'Borrow Limit: ' . getSetting('silver_borrow_limit', 3) . ' Books',
-            'Duration: ' . getSetting('silver_borrow_duration', 14) . ' Days + Extension',
-            'Shopping: 10% Discount',
-            'Support: Standard'
+            'Borrow Limit: ' . getSetting('silver_borrow_limit', 10) . ' Books',
+            'Duration: ' . getSetting('silver_borrow_duration', 14) . ' Days',
+            'Shopping: ' . getSetting('silver_discount', '10% Discount'),
+            'Support: ' . getSetting('silver_support', 'Standard')
         ]
     ],
     'gold' => [
         'name' => 'Gold',
-        'price' => 25000,
+        'price' => (int)getSetting('gold_price', 25000),
         'color' => '#f1c40f',
         'gradient' => 'linear-gradient(135deg, #f1c40f, #f39c12)',
         'benefits' => [
-            'Borrow Limit: ' . getSetting('gold_borrow_limit', 5) . ' Books',
-            'Duration: ' . getSetting('gold_borrow_duration', 14) . ' Days + Extension',
-            'Shopping: 20% Discount',
-            'Support: Standard'
+            'Borrow Limit: ' . getSetting('gold_borrow_limit', 50) . ' Books',
+            'Duration: ' . getSetting('gold_borrow_duration', 30) . ' Days',
+            'Shopping: ' . getSetting('gold_discount', '20% Discount'),
+            'Support: ' . getSetting('gold_support', 'Standard')
         ]
     ],
     'platinum' => [
         'name' => 'Platinum',
-        'price' => 50000,
+        'price' => (int)getSetting('platinum_price', 50000),
         'color' => '#1e293b',
         'gradient' => 'linear-gradient(135deg, #1e293b, #334155)',
         'benefits' => [
             'Borrow Limit: ' . getSetting('platinum_borrow_limit', 100) . ' Books',
-            'Duration: ' . getSetting('platinum_borrow_duration', 30) . ' Days',
-            'Shopping: 25% Disc + Free Ship',
-            'Support: Priority'
+            'Duration: ' . getSetting('platinum_borrow_duration', 60) . ' Days',
+            'Shopping: ' . getSetting('platinum_discount', '25% Disc + Free Ship'),
+            'Support: ' . getSetting('platinum_support', 'Priority')
         ]
     ]
 ];
@@ -158,13 +157,22 @@ include 'views/header.php';
         <?php 
         $currentTierPrice = $tiers[$currentTier]['price'] ?? 0;
         foreach ($tiers as $key => $tier): 
-            $isActive = ($currentTier === $key);
-            $isUpgrade = ($tier['price'] > $currentTierPrice); 
+            $isActive = isset($activeSubs[$key]) || ($key === 'bronze' && empty($activeSubs));
+            $expiry = $activeSubs[$key] ?? null;
+            $isPrimary = ($currentTier === $key);
         ?>
-        <div class="col-lg-3 col-md-6">
+        <div class="col-lg-3 col-md-6 text-start">
             <div class="ms-card <?= $isActive ? 'active' : '' ?>">
-                <?php if ($isActive): ?>
-                    <div class="tier-badge">Current</div>
+                <?php if ($isPrimary): ?>
+                    <div class="tier-badge">Primary</div>
+                <?php elseif ($isActive): ?>
+                    <div class="tier-badge" style="background: #22c55e;">Active</div>
+                <?php endif; ?>
+
+                <?php if ($isActive && $expiry): ?>
+                    <div class="small fw-bold text-success mb-2" style="font-size: 11px;">
+                        <i class="fas fa-clock me-1"></i> Expires: <?= date('M j, Y', strtotime($expiry)) ?>
+                    </div>
                 <?php endif; ?>
 
                 <div class="tier-icon" style="background: <?= $tier['gradient'] ?>">
@@ -186,16 +194,13 @@ include 'views/header.php';
                     <?php endforeach; ?>
                 </ul>
 
-                <?php if ($isActive): ?>
-                    <button class="btn btn-tier btn-tier-outline" disabled>Active Membership</button>
-                <?php elseif ($isUpgrade): ?>
+                <?php if ($key === 'bronze'): ?>
+                    <button class="btn btn-tier btn-tier-outline" disabled>Default Plan</button>
+                <?php else: ?>
                     <button class="btn btn-tier btn-tier-primary" 
                             onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">
-                        Upgrade Now
+                        <?= $isActive ? 'Extend Plan' : 'Join Now' ?>
                     </button>
-                <?php else: ?>
-                    <!-- Cannot join lower tiers if higher already active -->
-                    <button class="btn btn-tier btn-tier-outline" disabled style="opacity: 0.5;">Higher Tier Active</button>
                 <?php endif; ?>
             </div>
         </div>

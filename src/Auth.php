@@ -93,10 +93,24 @@ class Auth
                     $config = require dirname(__DIR__) . '/config/database.php';
                     $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
                     
-                    // Revert to bronze if expired
-                    $stmt = $pdo->prepare("UPDATE users SET membership_tier = 'bronze', membership_expires_at = NULL 
-                                         WHERE id = ? AND membership_expires_at < NOW() AND membership_tier != 'bronze'");
+                    // Cleanup expired subscriptions
+                    $stmt = $pdo->prepare("DELETE FROM user_subscriptions WHERE user_id = ? AND expires_at < NOW()");
                     $stmt->execute([$_SESSION['user_id']]);
+                    
+                    if ($stmt->rowCount() > 0) {
+                        // Recalculate main tier if something was deleted
+                        $activeStmt = $pdo->prepare("SELECT tier FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
+                        $activeStmt->execute([$_SESSION['user_id']]);
+                        $tiers = $activeStmt->fetchAll(PDO::FETCH_COLUMN);
+                        
+                        $bestTier = 'bronze';
+                        if (in_array('platinum', $tiers)) $bestTier = 'platinum';
+                        elseif (in_array('gold', $tiers)) $bestTier = 'gold';
+                        elseif (in_array('silver', $tiers)) $bestTier = 'silver';
+                        
+                        $updateStmt = $pdo->prepare("UPDATE users SET membership_tier = ? WHERE id = ?");
+                        $updateStmt->execute([$bestTier, $_SESSION['user_id']]);
+                    }
                     
                     $_SESSION['ms_expiry_checked'] = time();
                 } catch (\Exception $e) {}
@@ -104,6 +118,25 @@ class Auth
         }
         
         return $isLoggedIn;
+    }
+
+    /**
+     * Get all active subscriptions for the user
+     */
+    public static function getSubscriptions(): array
+    {
+        if (!isset($_SESSION['user_id'])) return [];
+        
+        try {
+            $config = require dirname(__DIR__) . '/config/database.php';
+            $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
+            
+            $stmt = $pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
+            $stmt->execute([$_SESSION['user_id']]);
+            return $stmt->fetchAll(PDO::FETCH_KEY_PAIR); // Returns [tier => expires_at]
+        } catch (\Exception $e) {
+            return [];
+        }
     }
 
     /**
@@ -136,6 +169,7 @@ class Auth
     public static function guard(string $redirectTo = 'login.php'): void
     {
         if (!self::check()) {
+            $_SESSION['flash_message'] = ['text' => 'Please login to access this page.', 'type' => 'warning'];
             header("Location: $redirectTo");
             exit;
         }
