@@ -44,6 +44,20 @@ switch ($action) {
         }
         break;
 
+    case 'get_subs':
+        $user = $userSvc->getUserById($userId);
+        if (!$user) {
+            echo json_encode(['success' => false, 'message' => 'User not found']);
+            exit;
+        }
+        $subs = Auth::getSubscriptions($userId);
+        echo json_encode([
+            'success' => true,
+            'username' => $user['username'],
+            'subscriptions' => $subs
+        ]);
+        break;
+
     case 'delete_user':
         if ($userSvc->deleteUser($userId)) {
             echo json_encode(['success' => true]);

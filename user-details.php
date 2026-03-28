@@ -342,11 +342,11 @@ include 'views/header.php';
                                 <i class="fas fa-layer-group me-2"></i>Active Memberships
                             </h6>
                             <div class="d-flex flex-wrap gap-2">
-                                <?php foreach ($activeSubs as $subTier => $expiresAt): ?>
+                                <?php foreach ($activeSubs as $sub): ?>
                                     <div class="p-2 px-3 rounded-pill bg-white border d-flex align-items-center gap-2 shadow-sm">
                                         <div class="tier-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--bookhouse-orange);"></div>
-                                        <span class="fw-800 text-uppercase text-dark" style="font-size: 10px;"><?= e($subTier) ?></span>
-                                        <span class="text-muted" style="font-size: 10px;">• Ends <?= date('M j, Y', strtotime($expiresAt)) ?></span>
+                                        <span class="fw-800 text-uppercase text-dark" style="font-size: 10px;"><?= e($sub['tier']) ?></span>
+                                        <span class="text-muted" style="font-size: 10px;">• <?= date('M j, Y, g:i A', strtotime($sub['expires_at'])) ?></span>
                                     </div>
                                 <?php endforeach; ?>
                             </div>

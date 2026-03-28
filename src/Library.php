@@ -396,24 +396,36 @@ class Library
 
             if (!$request) return false;
 
-            // Insert or update subscription in the new table
-            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, tier, expires_at) 
-                                         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH)) 
-                                         ON DUPLICATE KEY UPDATE expires_at = DATE_ADD(GREATEST(expires_at, NOW()), INTERVAL 1 MONTH)");
+            // Insert a new subscription record for this purchase
+            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");
             $stmt->execute([$request['user_id'], $request['tier']]);
 
             // Update main user tier to the "highest" active tier
-            $activeSubscriptions = $this->pdo->prepare("SELECT tier FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
+            $activeSubscriptions = $this->pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
             $activeSubscriptions->execute([$request['user_id']]);
-            $currentSubTiers = $activeSubscriptions->fetchAll(\PDO::FETCH_COLUMN);
+            $subs = $activeSubscriptions->fetchAll(\PDO::FETCH_ASSOC);
             
             $bestTier = 'bronze';
-            if (in_array('platinum', $currentSubTiers)) $bestTier = 'platinum';
-            elseif (in_array('gold', $currentSubTiers)) $bestTier = 'gold';
-            elseif (in_array('silver', $currentSubTiers)) $bestTier = 'silver';
+            $maxExpiry = null;
+            
+            $tiersFound = array_column($subs, 'tier');
+            if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
+            elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
+            elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
 
-            $stmt = $this->pdo->prepare("UPDATE users SET membership_tier = ? WHERE id = ?");
-            $stmt->execute([$bestTier, $request['user_id']]);
+            // Find max expiry for the best tier
+            if ($bestTier !== 'bronze') {
+                foreach ($subs as $s) {
+                    if ($s['tier'] === $bestTier) {
+                        if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
+                            $maxExpiry = $s['expires_at'];
+                        }
+                    }
+                }
+            }
+
+            $stmt = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
+            $stmt->execute([$bestTier, $maxExpiry, $request['user_id']]);
 
             // Mark request as approved
             $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved' WHERE id = ?");

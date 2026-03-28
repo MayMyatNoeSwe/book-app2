@@ -18,7 +18,17 @@ $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config
 $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
 
 $userId = Auth::id();
-$activeSubs = Auth::getSubscriptions(); // [tier => expires_at]
+$subRecords = Auth::getSubscriptions(); // [[tier => ..., expires_at => ...]]
+$activeTiers = [];
+foreach($subRecords as $sr) {
+    if (!isset($activeTiers[$sr['tier']])) {
+        $activeTiers[$sr['tier']] = ['expiry' => $sr['expires_at'], 'count' => 0];
+    }
+    if (strtotime($sr['expires_at']) > strtotime($activeTiers[$sr['tier']]['expiry'])) {
+        $activeTiers[$sr['tier']]['expiry'] = $sr['expires_at'];
+    }
+    $activeTiers[$sr['tier']]['count']++;
+}
 $currentTier = strtolower($pdo->query("SELECT membership_tier FROM users WHERE id = $userId")->fetchColumn() ?: 'bronze');
 
 $tiers = [
@@ -157,8 +167,10 @@ include 'views/header.php';
         <?php 
         $currentTierPrice = $tiers[$currentTier]['price'] ?? 0;
         foreach ($tiers as $key => $tier): 
-            $isActive = isset($activeSubs[$key]) || ($key === 'bronze' && empty($activeSubs));
-            $expiry = $activeSubs[$key] ?? null;
+            $tierData = $activeTiers[$key] ?? null;
+            $isActive = $tierData || ($key === 'bronze' && empty($activeTiers));
+            $expiry = $tierData['expiry'] ?? null;
+            $count = $tierData['count'] ?? 0;
             $isPrimary = ($currentTier === $key);
         ?>
         <div class="col-lg-3 col-md-6 text-start">
@@ -169,9 +181,12 @@ include 'views/header.php';
                     <div class="tier-badge" style="background: #22c55e;">Active</div>
                 <?php endif; ?>
 
-                <?php if ($isActive && $expiry): ?>
+                <?php if ($isActive && $expiry && $key !== 'bronze'): ?>
                     <div class="small fw-bold text-success mb-2" style="font-size: 11px;">
-                        <i class="fas fa-clock me-1"></i> Expires: <?= date('M j, Y', strtotime($expiry)) ?>
+                        <i class="fas fa-clock me-1"></i> Max Expire: <?= date('M j, Y', strtotime($expiry)) ?>
+                        <?php if ($count > 1): ?>
+                            <span class="badge bg-primary ms-1"><?= $count ?> Purchased</span>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -199,7 +214,7 @@ include 'views/header.php';
                 <?php else: ?>
                     <button class="btn btn-tier btn-tier-primary" 
                             onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">
-                        <?= $isActive ? 'Extend Plan' : 'Join Now' ?>
+                        <?= $isActive ? 'Buy Again' : 'Join Now' ?>
                     </button>
                 <?php endif; ?>
             </div>

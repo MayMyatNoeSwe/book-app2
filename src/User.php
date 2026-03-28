@@ -55,7 +55,12 @@ class User
 
     public function getAllUsers(): array
     {
-        $stmt = $this->pdo->query("SELECT id, username, email, role, membership_tier, membership_id, created_at FROM users ORDER BY created_at DESC");
+        $sql = "SELECT u.id, u.username, u.email, u.role, u.membership_tier, u.membership_id, u.membership_expires_at, u.created_at,
+                (SELECT COUNT(*) FROM user_subscriptions s WHERE s.user_id = u.id AND s.expires_at > NOW()) as sub_count,
+                (SELECT GROUP_CONCAT(DISTINCT tier) FROM user_subscriptions s WHERE s.user_id = u.id AND s.expires_at > NOW()) as active_tiers
+                FROM users u 
+                ORDER BY u.created_at DESC";
+        $stmt = $this->pdo->query($sql);
         return $stmt->fetchAll();
     }
 
