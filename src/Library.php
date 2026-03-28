@@ -396,24 +396,83 @@ class Library
 
             if (!$request) return false;
 
-            // Insert a new subscription record for this purchase
-            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");
-            $stmt->execute([$request['user_id'], $request['tier']]);
+            // 1. Generate a single-use Redemption Code
+            // 1. Generate a single-use Redemption Code
+            // Using a distinct prefix to differentiate from bulk-generated keys
+            $code = strtoupper('MS-' . bin2hex(random_bytes(2)) . '-' . bin2hex(random_bytes(2)));
+            
+            $stmt = $this->pdo->prepare("INSERT INTO membership_codes (code, tier, usage_limit) VALUES (?, ?, ?)");
+            $stmt->execute([$code, $request['tier'], 1]);
 
-            // Update main user tier to the "highest" active tier
-            $activeSubscriptions = $this->pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
-            $activeSubscriptions->execute([$request['user_id']]);
-            $subs = $activeSubscriptions->fetchAll(\PDO::FETCH_ASSOC);
+            // 2. Mark request as approved and store the delivered code
+            $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved', redeem_code = ? WHERE id = ?");
+            $stmt->execute([$code, $requestId]);
+
+            // 3. Record the transaction in the financial ledger
+            $prices = [
+                'silver' => (int)getSetting('silver_price', 10000), 
+                'gold' => (int)getSetting('gold_price', 25000), 
+                'platinum' => (int)getSetting('platinum_price', 50000)
+            ];
+            $amount = $prices[$request['tier']] ?? 0;
+            if ($amount > 0) {
+                $this->addTransaction('income', 'membership_fee', $amount, "Released code $code for {$request['tier']} Membership (Request #$requestId)", $requestId, 'membership_requests', $request['user_id']);
+            }
+
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            error_log("MEMBERSHIP APPROVAL ERROR: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function redeemMembershipCode(int $userId, string $code): array
+    {
+        try {
+            if (!$this->pdo->inTransaction()) {
+                $this->pdo->beginTransaction();
+            }
+
+            // 1. Validate Code
+            $stmt = $this->pdo->prepare("SELECT * FROM membership_codes WHERE code = ? AND (expires_at IS NULL OR expires_at > NOW())");
+            $stmt->execute([$code]);
+            $mc = $stmt->fetch();
+
+            if (!$mc) return ['success' => false, 'message' => 'Invalid or expired redemption code.'];
+
+            // 2. Check if user already used this specific code
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM membership_code_usage WHERE code_id = ? AND user_id = ?");
+            $stmt->execute([$mc['id'], $userId]);
+            if ($stmt->fetchColumn() > 0) return ['success' => false, 'message' => 'You have already redeemed this code.'];
+
+            // 3. Check overall usage limit
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM membership_code_usage WHERE code_id = ?");
+            $stmt->execute([$mc['id']]);
+            if ($stmt->fetchColumn() >= $mc['usage_limit']) return ['success' => false, 'message' => 'This code has reached its maximum usage limit.'];
+
+            // 4. Record Usage
+            $stmt = $this->pdo->prepare("INSERT INTO membership_code_usage (code_id, user_id) VALUES (?, ?)");
+            $stmt->execute([$mc['id'], $userId]);
+
+            // 5. Grant Subscription (30 days)
+            $tier = strtolower($mc['tier']);
+            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");
+            $stmt->execute([$userId, $tier]);
+
+            // 6. Sync User Profile
+            $activeStmt = $this->pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
+            $activeStmt->execute([$userId]);
+            $subs = $activeStmt->fetchAll(\PDO::FETCH_ASSOC);
             
             $bestTier = 'bronze';
             $maxExpiry = null;
-            
             $tiersFound = array_column($subs, 'tier');
             if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
             elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
             elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
 
-            // Find max expiry for the best tier
             if ($bestTier !== 'bronze') {
                 foreach ($subs as $s) {
                     if ($s['tier'] === $bestTier) {
@@ -424,31 +483,14 @@ class Library
                 }
             }
 
-            $stmt = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
-            $stmt->execute([$bestTier, $maxExpiry, $request['user_id']]);
-
-            // Mark request as approved
-            $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved' WHERE id = ?");
-            $stmt->execute([$requestId]);
-
-            // Record transaction
-            $prices = [
-                'silver' => (int)getSetting('silver_price', 10000), 
-                'gold' => (int)getSetting('gold_price', 25000), 
-                'platinum' => (int)getSetting('platinum_price', 50000)
-            ];
-            $amount = $prices[$request['tier']] ?? 0;
-            if ($amount > 0) {
-                $this->addTransaction('income', 'membership_fee', $amount, "Approved {$request['tier']} membership for user #" . $request['user_id'], $requestId, 'membership_requests', $request['user_id']);
-            }
+            $upd = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
+            $upd->execute([$bestTier, $maxExpiry, $userId]);
 
             $this->pdo->commit();
-            return true;
+            return ['success' => true, 'tier' => $tier];
         } catch (\Exception $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            return false;
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            return ['success' => false, 'message' => 'System error during redemption.'];
         }
     }
 
@@ -1200,9 +1242,17 @@ class Library
     public function addTransaction(string $type, string $category, float $amount, ?string $description, ?string $refId = null, ?string $refTable = null, ?int $userId = null): bool
     {
         $sql = "INSERT INTO transactions (type, category, amount, description, reference_id, reference_table, user_id) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)";
+                VALUES (:type, :category, :amount, :description, :refId, :refTable, :userId)";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([$type, $category, $amount, $description, $refId, $refTable, $userId]);
+        return $stmt->execute([
+            ':type' => $type,
+            ':category' => $category,
+            ':amount' => $amount,
+            ':description' => $description,
+            ':refId' => $refId,
+            ':refTable' => $refTable,
+            ':userId' => $userId
+        ]);
     }
 
     public function addExpense(string $title, float $amount, string $category, ?string $description, string $date): bool

@@ -159,8 +159,8 @@ renderAdminLayout('Membership Management', function () use ($currentTab, $counts
                 <th>User / Member</th>
                 <th>Desired Tier</th>
                 <th>Payment Method</th>
-                <th>Receipt</th>
-                <th>Action</th>
+                <th>Released Code</th>
+                <th>Action Status</th>
                 <th>Requested At</th>
             </tr>
         </thead>
@@ -192,7 +192,9 @@ renderAdminLayout('Membership Management', function () use ($currentTab, $counts
                         <span class="fw-bold text-muted" style="font-size:13px;"><?= e($r['payment_method']) ?></span>
                     </td>
                     <td>
-                        <?php if ($r['payment_screenshot']): ?>
+                        <?php if ($r['redeem_code']): ?>
+                            <span class="badge bg-light text-primary border px-2 py-1 font-monospace smallest fw-800"><?= $r['redeem_code'] ?></span>
+                        <?php elseif ($r['payment_screenshot']): ?>
                             <div class="screenshot-btn" onclick="viewReceipt('../<?= $r['payment_screenshot'] ?>')">
                                 <img src="../<?= $r['payment_screenshot'] ?>" alt="Receipt">
                             </div>
@@ -223,13 +225,13 @@ renderAdminLayout('Membership Management', function () use ($currentTab, $counts
 <script>
 function approveReq(id) {
     Swal.fire({
-        title: 'Approve Upgrade?',
-        text: 'This will update the user\'s membership tier immediately.',
+        title: 'Release Activation Key?',
+        text: 'This will generate a unique code and send it to the user\'s notification panel.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#94a3b8',
-        confirmButtonText: 'Yes, Approve User',
+        confirmButtonText: 'Yes, Release Key',
         reverseButtons: true
     }).then((result) => {
         if (result.isConfirmed) {

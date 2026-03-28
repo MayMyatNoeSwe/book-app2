@@ -18,6 +18,21 @@ $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config
 $pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
 
 $userId = Auth::id();
+
+// REDEEM CODE HANDLER
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_code'])) {
+    $code = strtoupper(trim($_POST['code'] ?? ''));
+    $lib = new \App\Library($pdo);
+    $res = $lib->redeemMembershipCode($userId, $code);
+    
+    if ($res['success']) {
+        $_SESSION['flash_message'] = ['text' => "SUCCESS! You've successfully redeemed a " . strtoupper($res['tier']) . " membership.", 'type' => 'success'];
+    } else {
+        $_SESSION['flash_message'] = ['text' => $res['message'], 'type' => 'danger'];
+    }
+    header("Location: membership.php");
+    exit;
+}
 $subRecords = Auth::getSubscriptions(); // [[tier => ..., expires_at => ...]]
 $activeTiers = [];
 foreach($subRecords as $sr) {
@@ -30,6 +45,11 @@ foreach($subRecords as $sr) {
     $activeTiers[$sr['tier']]['count']++;
 }
 $currentTier = strtolower($pdo->query("SELECT membership_tier FROM users WHERE id = $userId")->fetchColumn() ?: 'bronze');
+
+// Fetch approved requests with codes for this user
+$stmt = $pdo->prepare("SELECT tier, redeem_code, created_at FROM membership_requests WHERE user_id = ? AND status = 'approved' AND redeem_code IS NOT NULL ORDER BY created_at DESC LIMIT 4");
+$stmt->execute([$userId]);
+$releasedCodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tiers = [
     'bronze' => [
@@ -159,6 +179,55 @@ include 'views/header.php';
     <div class="container text-center">
         <h1 class="ms-title">Elevate Your Reading</h1>
         <p class="ms-subtitle">Unlock exclusive privileges, higher borrow limits, and special discounts with our premium membership tiers.</p>
+        
+        <!-- Released Keys Notification (If any) -->
+        <?php if (!empty($releasedCodes)): ?>
+            <div class="row justify-content-center mb-4 text-start">
+                <div class="col-lg-6">
+                    <div class="p-4 rounded-5 border-0 shadow-sm bg-white border-start border-primary border-5">
+                        <h6 class="fw-800 text-dark mb-3 small"><i class="fas fa-bell text-primary me-2"></i>Approved Membership Keys</h6>
+                        <div class="row g-2">
+                            <?php foreach ($releasedCodes as $rc): ?>
+                                <div class="col-12">
+                                    <div class="p-2 px-3 rounded-4 bg-lightest border d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="smallest fw-800 text-uppercase text-muted opacity-75 d-block mb-1"><?= $rc['tier'] ?> PLAN</span>
+                                            <span class="fw-800 font-monospace text-primary tracking-widest fs-5"><?= $rc['redeem_code'] ?></span>
+                                        </div>
+                                        <button class="btn btn-sm btn-soft-primary rounded-pill px-3 copy-btn" data-code="<?= $rc['redeem_code'] ?>">
+                                            <i class="fas fa-copy pe-1"></i>Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <p class="smallest text-muted mt-3 mb-0 fw-bold opacity-75 italic">* COPY AND REDEEM THE CODE BELOW TO ACTIVATE YOUR PASS.</p>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Redeem Key Section -->
+        <div class="row justify-content-center mb-5">
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm rounded-5 overflow-hidden p-3" style="background: linear-gradient(135deg, rgba(78, 115, 223, 0.05), #ffffff); border: 1px solid rgba(78, 115, 223, 0.1) !important;">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-5 text-md-start mb-3 mb-md-0">
+                                <h6 class="fw-800 text-dark mb-1">Redeem a Key</h6>
+                                <p class="text-muted smallest fw-bold text-uppercase mb-0 opacity-75 small">HAVE A PRE-PAID CODE?</p>
+                            </div>
+                            <div class="col-md-7">
+                                <form action="membership.php" method="POST" class="d-flex gap-2">
+                                    <input type="text" name="code" class="form-control border-light-subtle rounded-pill px-3 fw-800 text-uppercase" placeholder="ENTER KEY" required>
+                                    <button type="submit" name="redeem_code" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">REDEEM</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -348,8 +417,6 @@ function submitMembershipRequest(tier, method, file) {
     });
 }
 
-// Keep the old confirmUpgrade for Free tiers
-function confirmUpgrade(tierKey, tierName) {
     Swal.fire({
         title: 'Processing...',
         allowOutsideClick: false,
@@ -375,6 +442,22 @@ function confirmUpgrade(tierKey, tierName) {
         }
     });
 }
+
+// Copy Code Helper
+document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const code = this.dataset.code;
+        navigator.clipboard.writeText(code).then(() => {
+            const originalText = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-check"></i> Copied';
+            this.classList.replace('btn-soft-primary', 'btn-success');
+            setTimeout(() => {
+                this.innerHTML = originalText;
+                this.classList.replace('btn-success', 'btn-soft-primary');
+            }, 2000);
+        });
+    });
+});
 </script>
 
 <?php include 'views/footer.php'; ?>

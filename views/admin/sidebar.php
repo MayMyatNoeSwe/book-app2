@@ -78,6 +78,12 @@ $currentScript = basename($_SERVER['SCRIPT_NAME']);
                 </a>
             </li>
             <li class="nav-item">
+                <a href="<?= baseUrl() ?>/admin/membership_codes.php" class="nav-link <?= $currentScript === 'membership_codes.php' ? 'active' : '' ?>">
+                    <i class="fas fa-ticket-alt"></i>
+                    <span>Membership Keys</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="<?= baseUrl() ?>/admin/messages.php" class="nav-link <?= $currentScript === 'messages.php' ? 'active' : '' ?>">
                     <i class="fas fa-envelope-open-text"></i>
                     <span>Messages</span>
