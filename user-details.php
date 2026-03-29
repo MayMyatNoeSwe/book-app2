@@ -82,14 +82,30 @@ $reviews = $stmt->fetchAll();
 
 // --- SHARING LOGIC ---
 $lib = new \App\Library($pdo);
-$isHost = false;
-$hostSubId = null;
+// 1. Identify WHICH sub to manage in "Manage Family Shares"
+$activeSubId = $user['active_subscription_id'] ?? 0;
+$possibleHostSubs = [];
+
 foreach ($activeSubs as $sub) {
-    if ($sub['is_host'] && in_array($sub['tier'], ['gold', 'platinum'])) {
-        $isHost = true;
-        $hostSubId = $sub['id'];
-        break;
+    if ($sub['is_host'] && in_array($sub['tier'], ['silver', 'gold', 'platinum'])) {
+        $possibleHostSubs[] = $sub;
     }
+}
+
+// SORT by tier priority (Platinum > Gold > Silver)
+$pri = ['platinum' => 3, 'gold' => 2, 'silver' => 1];
+usort($possibleHostSubs, function($a, $b) use ($pri, $activeSubId) {
+    // ACTIVE SUB ALWAYS FIRST
+    if ($a['id'] == $activeSubId) return -1;
+    if ($b['id'] == $activeSubId) return 1;
+    // Then by tier rank
+    return ($pri[$b['tier']] ?? 0) <=> ($pri[$a['tier']] ?? 0);
+});
+
+if (!empty($possibleHostSubs)) {
+    $isHost = true;
+    $hostSubId = $possibleHostSubs[0]['id'];
+    $hostSubTier = $possibleHostSubs[0]['tier'];
 }
 
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
@@ -634,7 +650,7 @@ include 'views/header.php';
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-5 border-0 shadow-lg">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-800"><i class="fas fa-users-cog me-2 text-primary"></i>Family Sharing</h5>
+                <h5 class="modal-title fw-800 text-capitalize"><i class="fas fa-users-cog me-2 text-primary"></i><?= e($hostSubTier ?? '') ?> Family Sharing</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">

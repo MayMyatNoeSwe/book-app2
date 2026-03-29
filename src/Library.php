@@ -149,10 +149,13 @@ class Library
     public function getMembershipRules(int $userId): array
     {
         $stmt = $this->pdo->prepare("
-            SELECT us.tier, u.active_subscription_id, us.parent_id, us.expires_at, parent.expires_at as parent_expires_at
+            SELECT us.tier, u.active_subscription_id, us.parent_id, us.expires_at, 
+                   parent.expires_at as parent_expires_at,
+                   host.membership_tier as host_primary_tier
             FROM users u
             LEFT JOIN user_subscriptions us ON u.active_subscription_id = us.id
             LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+            LEFT JOIN users host ON parent.user_id = host.id
             WHERE u.id = ? 
             AND (
                 (us.parent_id IS NULL AND (us.expires_at > NOW() OR us.id IS NULL)) 
@@ -162,7 +165,16 @@ class Library
         ");
         $stmt->execute([$userId]);
         $row = $stmt->fetch();
-        $tier = strtolower($row['tier'] ?? 'bronze');
+        
+        $tier = 'bronze';
+        if ($row) {
+            if ($row['parent_id'] && !empty($row['host_primary_tier'])) {
+                // Member follows host's active tier
+                $tier = strtolower($row['host_primary_tier']);
+            } else {
+                $tier = strtolower($row['tier'] ?? 'bronze');
+            }
+        }
         $activeSubId = $row['active_subscription_id'] ?? null;
 
         // Fetch dynamic rules from settings using global getSetting helper
@@ -508,41 +520,59 @@ class Library
      */
     public function syncUserProfileTier(int $userId): void
     {
-        // 1. Find all active subscriptions (independent or linked to active parent)
-        $sql = "SELECT us.tier, us.expires_at 
-                FROM user_subscriptions us
-                LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
-                WHERE us.user_id = ? 
-                AND (
-                    (us.parent_id IS NULL AND us.expires_at > NOW()) 
-                    OR 
-                    (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
-                )";
-        
-        $stmt = $this->pdo->prepare($sql);
+        // 1. Get current active subscription if valid
+        $stmt = $this->pdo->prepare("
+            SELECT us.tier, us.expires_at, us.parent_id, parent.expires_at as parent_expires_at
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.active_subscription_id = us.id
+            LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+            WHERE u.id = ?
+        ");
         $stmt->execute([$userId]);
-        $subs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        $bestTier = 'bronze';
-        $maxExpiry = null;
-        $tiersFound = array_column($subs, 'tier');
-        
-        if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
-        elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
-        elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
+        $activeSub = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-        if ($bestTier !== 'bronze') {
-            foreach ($subs as $s) {
-                if ($s['tier'] === $bestTier) {
-                    if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
-                        $maxExpiry = $s['expires_at'];
+        $isVal = false;
+        if ($activeSub && $activeSub['tier']) {
+            if (!$activeSub['parent_id'] && strtotime($activeSub['expires_at']) > time()) $isVal = true;
+            elseif ($activeSub['parent_id'] && strtotime($activeSub['parent_expires_at'] ?? '') > time()) $isVal = true;
+        }
+
+        $finalTier = 'bronze';
+        $finalExpiry = null;
+
+        if ($isVal) {
+            $finalTier = $activeSub['tier'];
+            $finalExpiry = $activeSub['expires_at'];
+        } else {
+            // 2. FALLBACK: Best available active sub
+            $sql = "SELECT us.tier, us.expires_at FROM user_subscriptions us
+                    LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                    WHERE us.user_id = ? AND (
+                        (us.parent_id IS NULL AND us.expires_at > NOW()) OR 
+                        (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+                    )";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([$userId]);
+            $subs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $tiersFound = array_column($subs, 'tier');
+            if (in_array('platinum', $tiersFound)) $finalTier = 'platinum';
+            elseif (in_array('gold', $tiersFound)) $finalTier = 'gold';
+            elseif (in_array('silver', $tiersFound)) $finalTier = 'silver';
+
+            if ($finalTier !== 'bronze') {
+                foreach ($subs as $s) {
+                    if ($s['tier'] === $finalTier) {
+                        if (!$finalExpiry || strtotime($s['expires_at']) > strtotime($finalExpiry)) {
+                            $finalExpiry = $s['expires_at'];
+                        }
                     }
                 }
             }
         }
 
         $upd = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
-        $upd->execute([$bestTier, $maxExpiry, $userId]);
+        $upd->execute([$finalTier, $finalExpiry, $userId]);
     }
 
     public function rejectMembershipRequest(int $requestId, string $reason = ''): bool
@@ -697,7 +727,7 @@ class Library
         $stmt = $this->pdo->prepare("SELECT tier FROM user_subscriptions WHERE id = ? AND user_id = ? AND is_host = 1 AND expires_at > NOW()");
         $stmt->execute([$subId, $hostId]);
         $sub = $stmt->fetch();
-        if (!$sub || !in_array($sub['tier'], ['gold', 'platinum'])) {
+        if (!$sub || !in_array($sub['tier'], ['silver', 'gold', 'platinum'])) {
             return ['success' => false, 'message' => 'Invalid or unauthorized host subscription.'];
         }
 
@@ -1396,15 +1426,32 @@ class Library
 
     public function setActiveCard(int $userId, int $subscriptionId): bool
     {
-        // Verify this card belongs to user and is NOT expired
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM user_subscriptions WHERE id = ? AND user_id = ? AND expires_at > NOW()");
+        // Verify this card belongs to user and is NOT expired (linked or independent)
+        $stmt = $this->pdo->prepare("
+            SELECT us.*, parent.expires_at as parent_expires_at
+            FROM user_subscriptions us
+            LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+            WHERE us.id = ? AND us.user_id = ?
+        ");
         $stmt->execute([$subscriptionId, $userId]);
-        if ((int)$stmt->fetchColumn() === 0) {
-             return false;
-        }
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$sub) return false;
+
+        // Validation logic
+        $isValid = false;
+        if (!$sub['parent_id'] && strtotime($sub['expires_at']) > time()) $isValid = true;
+        elseif ($sub['parent_id'] && isset($sub['parent_expires_at']) && strtotime($sub['parent_expires_at']) > time()) $isValid = true;
+
+        if (!$isValid) return false;
 
         $stmt = $this->pdo->prepare("UPDATE users SET active_subscription_id = ? WHERE id = ?");
-        return $stmt->execute([$subscriptionId, $userId]);
+        $res = $stmt->execute([$subscriptionId, $userId]);
+
+        if ($res) {
+            $this->syncUserProfileTier($userId);
+        }
+        return $res;
     }
 
     public function addTransaction(string $type, string $category, float $amount, ?string $description, ?string $refId = null, ?string $refTable = null, ?int $userId = null): bool

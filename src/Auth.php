@@ -97,41 +97,64 @@ class Auth
                     $stmt = $pdo->prepare("DELETE FROM user_subscriptions WHERE user_id = ? AND parent_id IS NULL AND expires_at < NOW()");
                     $stmt->execute([$_SESSION['user_id']]);
                     
-                    // Recalculate main tier (always sync with current best active sub)
-                    $sql = "SELECT us.tier, us.expires_at 
-                            FROM user_subscriptions us
-                            LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
-                            WHERE us.user_id = ? 
-                            AND (
-                                (us.parent_id IS NULL AND us.expires_at > NOW()) 
-                                OR 
-                                (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
-                            )";
-                    
-                    $activeStmt = $pdo->prepare($sql);
-                    $activeStmt->execute([$_SESSION['user_id']]);
-                    $subs = $activeStmt->fetchAll(PDO::FETCH_ASSOC);
-                    
-                    $bestTier = 'bronze';
-                    $maxExpiry = null;
-                    
-                    $tiersFound = array_column($subs, 'tier');
-                    if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
-                    elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
-                    elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
-                    
-                    if ($bestTier !== 'bronze') {
-                        foreach ($subs as $s) {
-                            if ($s['tier'] === $bestTier) {
-                                if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
-                                    $maxExpiry = $s['expires_at'];
+                    // 1. Get current active subscription details
+                    $stmt = $pdo->prepare("
+                        SELECT us.tier, us.expires_at, us.parent_id, parent.expires_at as parent_expires_at
+                        FROM users u
+                        LEFT JOIN user_subscriptions us ON u.active_subscription_id = us.id
+                        LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                        WHERE u.id = ?
+                    ");
+                    $stmt->execute([$_SESSION['user_id']]);
+                    $activeSub = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    // Check if active sub is valid
+                    $isVal = false;
+                    if ($activeSub && $activeSub['tier']) {
+                        if (!$activeSub['parent_id'] && strtotime($activeSub['expires_at']) > time()) $isVal = true;
+                        elseif ($activeSub['parent_id'] && strtotime($activeSub['parent_expires_at'] ?? '') > time()) $isVal = true;
+                    }
+
+                    $finalTier = 'bronze';
+                    $finalExpiry = null;
+
+                    if ($isVal) {
+                        $finalTier = $activeSub['tier'];
+                        $finalExpiry = $activeSub['expires_at'];
+                    } else {
+                        // 2. FALLBACK: Find best active tier if active sub is invalid/none
+                        $sql = "SELECT us.tier, us.expires_at 
+                                FROM user_subscriptions us
+                                LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                                WHERE us.user_id = ? 
+                                AND (
+                                    (us.parent_id IS NULL AND us.expires_at > NOW()) 
+                                    OR 
+                                    (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+                                )";
+                        
+                        $activeStmt = $pdo->prepare($sql);
+                        $activeStmt->execute([$_SESSION['user_id']]);
+                        $subs = $activeStmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        $tiersFound = array_column($subs, 'tier');
+                        if (in_array('platinum', $tiersFound)) $finalTier = 'platinum';
+                        elseif (in_array('gold', $tiersFound)) $finalTier = 'gold';
+                        elseif (in_array('silver', $tiersFound)) $finalTier = 'silver';
+                        
+                        if ($finalTier !== 'bronze') {
+                            foreach ($subs as $s) {
+                                if ($s['tier'] === $finalTier) {
+                                    if (!$finalExpiry || strtotime($s['expires_at']) > strtotime($finalExpiry)) {
+                                        $finalExpiry = $s['expires_at'];
+                                    }
                                 }
                             }
                         }
                     }
 
                     $updateStmt = $pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
-                    $updateStmt->execute([$bestTier, $maxExpiry, $_SESSION['user_id']]);
+                    $updateStmt->execute([$finalTier, $finalExpiry, $_SESSION['user_id']]);
                     
                     $_SESSION['ms_expiry_checked'] = time();
                 } catch (\Exception $e) {}
