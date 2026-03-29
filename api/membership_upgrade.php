@@ -28,22 +28,21 @@ try {
     $pdo = new \PDO($dsn, $config['username'], $config['password'], $config['options']);
 
     $userId = Auth::id();
+    $lib = new \App\Library($pdo);
+    
+    // Create a 30-day subscription for the new tier
+    $stmt = $pdo->prepare("INSERT INTO user_subscriptions (user_id, is_host, tier, expires_at) VALUES (?, 1, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");
+    $stmt->execute([$userId, $newTier]);
+    $subId = $pdo->lastInsertId();
 
-    // Check if user already in that tier
-    $stmt = $pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
-    $stmt->execute([$userId]);
-    $currentTier = strtolower($stmt->fetchColumn() ?: 'bronze');
+    // Set as active card for the user
+    $stmt = $pdo->prepare("UPDATE users SET active_subscription_id = ? WHERE id = ?");
+    $stmt->execute([$subId, $userId]);
 
-    if ($currentTier === $newTier) {
-        echo json_encode(['success' => false, 'message' => 'You are already in this membership tier.']);
-        exit;
-    }
+    // Sync profile status
+    $lib->syncUserProfileTier($userId);
 
-    // Update user tier
-    $stmt = $pdo->prepare("UPDATE users SET membership_tier = ? WHERE id = ?");
-    $stmt->execute([$newTier, $userId]);
-
-    echo json_encode(['success' => true, 'message' => 'Upgrade successful!']);
+    echo json_encode(['success' => true, 'message' => 'Your account has been upgraded to ' . ucfirst($newTier) . '!']);
 
 } catch (\Exception $e) {
     echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);

@@ -93,37 +93,45 @@ class Auth
                     $config = require dirname(__DIR__) . '/config/database.php';
                     $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
                     
-                    // Cleanup expired subscriptions
-                    $stmt = $pdo->prepare("DELETE FROM user_subscriptions WHERE user_id = ? AND expires_at < NOW()");
+                    // Cleanup expired independent subscriptions
+                    $stmt = $pdo->prepare("DELETE FROM user_subscriptions WHERE user_id = ? AND parent_id IS NULL AND expires_at < NOW()");
                     $stmt->execute([$_SESSION['user_id']]);
                     
-                    if ($stmt->rowCount() > 0) {
-                        // Recalculate main tier if something was deleted
-                        $activeStmt = $pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
-                        $activeStmt->execute([$_SESSION['user_id']]);
-                        $subs = $activeStmt->fetchAll(PDO::FETCH_ASSOC);
-                        
-                        $bestTier = 'bronze';
-                        $maxExpiry = null;
-                        
-                        $tiersFound = array_column($subs, 'tier');
-                        if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
-                        elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
-                        elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
-                        
-                        if ($bestTier !== 'bronze') {
-                            foreach ($subs as $s) {
-                                if ($s['tier'] === $bestTier) {
-                                    if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
-                                        $maxExpiry = $s['expires_at'];
-                                    }
+                    // Recalculate main tier (always sync with current best active sub)
+                    $sql = "SELECT us.tier, us.expires_at 
+                            FROM user_subscriptions us
+                            LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                            WHERE us.user_id = ? 
+                            AND (
+                                (us.parent_id IS NULL AND us.expires_at > NOW()) 
+                                OR 
+                                (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+                            )";
+                    
+                    $activeStmt = $pdo->prepare($sql);
+                    $activeStmt->execute([$_SESSION['user_id']]);
+                    $subs = $activeStmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $bestTier = 'bronze';
+                    $maxExpiry = null;
+                    
+                    $tiersFound = array_column($subs, 'tier');
+                    if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
+                    elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
+                    elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
+                    
+                    if ($bestTier !== 'bronze') {
+                        foreach ($subs as $s) {
+                            if ($s['tier'] === $bestTier) {
+                                if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
+                                    $maxExpiry = $s['expires_at'];
                                 }
                             }
                         }
-
-                        $updateStmt = $pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
-                        $updateStmt->execute([$bestTier, $maxExpiry, $_SESSION['user_id']]);
                     }
+
+                    $updateStmt = $pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
+                    $updateStmt->execute([$bestTier, $maxExpiry, $_SESSION['user_id']]);
                     
                     $_SESSION['ms_expiry_checked'] = time();
                 } catch (\Exception $e) {}
@@ -145,11 +153,42 @@ class Auth
             $config = require dirname(__DIR__) . '/config/database.php';
             $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
             
-            $stmt = $pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW() ORDER BY expires_at ASC");
+            $sql = "SELECT us.*, parent.expires_at as parent_expires_at, h.username as host_name
+                    FROM user_subscriptions us
+                    LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                    LEFT JOIN users h ON parent.user_id = h.id
+                    WHERE us.user_id = ? 
+                    AND (
+                        (us.parent_id IS NULL AND us.expires_at > NOW()) 
+                        OR 
+                        (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+                    )
+                    ORDER BY us.expires_at DESC";
+            
+            $stmt = $pdo->prepare($sql);
             $stmt->execute([$userId]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC); 
         } catch (\Exception $e) {
             return [];
+        }
+    }
+
+    /**
+     * Get active card ID from session or DB
+     */
+    public static function getActiveCardId(): ?int
+    {
+        $userId = self::id();
+        if (!$userId) return null;
+        
+        try {
+            $config = require dirname(__DIR__) . '/config/database.php';
+            $pdo = new PDO("mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}", $config['username'], $config['password'], $config['options']);
+            $stmt = $pdo->prepare("SELECT active_subscription_id FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            return (int)$stmt->fetchColumn() ?: null;
+        } catch (\Exception $e) {
+            return null;
         }
     }
 

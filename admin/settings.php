@@ -32,9 +32,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             setSetting($tier . '_borrow_limit', $_POST[$tier . '_borrow_limit'] ?? $_POST['borrow_limit']);
             setSetting($tier . '_borrow_duration', $_POST[$tier . '_borrow_duration'] ?? $_POST['borrow_duration']);
             setSetting($tier . '_fine_per_day', $_POST[$tier . '_fine_per_day'] ?? $_POST['fine_per_day']);
+            setSetting($tier . '_price', $_POST[$tier . '_price'] ?? '0');
         }
 
-        setFlashMessage('Library tier policies updated successfully.', 'success');
+        setFlashMessage('Library member card policies updated successfully.', 'success');
         redirect(baseUrl() . '/admin/settings.php#library');
     } elseif ($_POST['action'] === 'update_preferences') {
         setSetting('maintenance_mode', isset($_POST['maintenance_mode']) ? '1' : '0');
@@ -162,7 +163,8 @@ renderAdminLayout('System Settings', function() {
                                 <table class="table table-borderless align-middle tr-table" style="background:#f8fafc; border-radius:16px; overflow:hidden;">
                                     <thead>
                                         <tr>
-                                            <th class="ps-4">MEMBERSHIP TIER</th>
+                                            <th class="ps-4">MEMBER CARD TIER</th>
+                                            <th>MONTHLY PRICE (KS)</th>
                                             <th>MAX BOOKS</th>
                                             <th>DURATION (DAYS)</th>
                                             <th class="pe-4">FINE (PER DAY)</th>
@@ -177,7 +179,6 @@ renderAdminLayout('System Settings', function() {
                                         ];
                                         foreach ($tiers as $tier):
                                         ?>
-                                        <tr>
                                             <td class="ps-4">
                                                 <div class="d-flex align-items-center gap-3 py-2">
                                                     <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:36px; height:36px; background:<?= $tier['color'] ?>15; color:<?= $tier['color'] ?>;">
@@ -185,6 +186,9 @@ renderAdminLayout('System Settings', function() {
                                                     </div>
                                                     <span class="fw-800 text-dark small"><?= $tier['name'] ?></span>
                                                 </div>
+                                            </td>
+                                            <td>
+                                                <input type="number" name="<?= $tier['key'] ?>_price" class="form-control form-control-sm rounded-3 w-75" value="<?= getSetting($tier['key'].'_price', ($tier['key'] === 'silver' ? 5000 : ($tier['key'] === 'gold' ? 12000 : 25000))) ?>">
                                             </td>
                                             <td>
                                                 <input type="number" name="<?= $tier['key'] ?>_borrow_limit" class="form-control form-control-sm rounded-3 w-75" value="<?= getSetting($tier['key'].'_borrow_limit', getSetting('borrow_limit', 3)) ?>">

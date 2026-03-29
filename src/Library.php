@@ -146,33 +146,46 @@ class Library
     /**
      * Get membership rules for a given user
      */
-    private function getMembershipRules(int $userId): array
-{
-    $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
-    $stmt->execute([$userId]);
-    $tier = strtolower($stmt->fetchColumn() ?: 'bronze');
+    public function getMembershipRules(int $userId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT us.tier, u.active_subscription_id, us.parent_id, us.expires_at, parent.expires_at as parent_expires_at
+            FROM users u
+            LEFT JOIN user_subscriptions us ON u.active_subscription_id = us.id
+            LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+            WHERE u.id = ? 
+            AND (
+                (us.parent_id IS NULL AND (us.expires_at > NOW() OR us.id IS NULL)) 
+                OR 
+                (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+            )
+        ");
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        $tier = strtolower($row['tier'] ?? 'bronze');
+        $activeSubId = $row['active_subscription_id'] ?? null;
 
-    // Fetch dynamic rules from settings using global getSetting helper
-    $limit = (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
-    $days = (int)getSetting($tier . '_borrow_duration', getSetting('borrow_duration', 14));
-    
-    // Penalties can also be dynamic
-    $fine = (int)getSetting($tier . '_fine_per_day', getSetting('fine_per_day', 500));
+        // Fetch dynamic rules from settings using global getSetting helper
+        $limit = (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
+        $days = (int)getSetting($tier . '_borrow_duration', getSetting('borrow_duration', 14));
+        $fine = (int)getSetting($tier . '_fine_per_day', getSetting('fine_per_day', 500));
 
-    return [
-        'limit' => $limit,
-        'days'  => $days,
-        'fine'  => $fine
-    ];
-}
+        return [
+            'tier' => $tier,
+            'limit' => $limit,
+            'days'  => $days,
+            'fine'  => $fine,
+            'sub_id' => $activeSubId
+        ];
+    }
 
     public function borrowBook(string $bookId, int $userId): bool
     {
         $rules = $this->getMembershipRules($userId);
         
-        // Check unreturned books against tier limit
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-        $stmt->execute([$userId]);
+        // Check unreturned books against CURRENT CARD limit (Multi-Card logic)
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
+        $stmt->execute([$userId, $rules['sub_id']]);
         $unreturnedBooks = (int)$stmt->fetchColumn();
         
         if ($unreturnedBooks >= $rules['limit']) {
@@ -195,8 +208,8 @@ class Library
         if (!$book || !$book->isAvailable()) return false;
 
         $dueDate = date('Y-m-d', strtotime('+' . $rules['days'] . ' days'));
-        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, book_id, due_date, `status`) VALUES (?,?,?,'pending')");
-        $stmt->execute([$userId, $bookId, $dueDate]);
+        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`) VALUES (?,?,?,?,'pending')");
+        $stmt->execute([$userId, $rules['sub_id'], $bookId, $dueDate]);
         return true;
     }
 
@@ -401,8 +414,8 @@ class Library
             // Using a distinct prefix to differentiate from bulk-generated keys
             $code = strtoupper('MS-' . bin2hex(random_bytes(2)) . '-' . bin2hex(random_bytes(2)));
             
-            $stmt = $this->pdo->prepare("INSERT INTO membership_codes (code, tier, usage_limit) VALUES (?, ?, ?)");
-            $stmt->execute([$code, $request['tier'], 5]);
+            $stmt = $this->pdo->prepare("INSERT INTO membership_codes (code, tier, usage_limit, owner_id) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$code, $request['tier'], 5, $request['user_id']]);
 
             // 2. Mark request as approved and store the delivered code
             $stmt = $this->pdo->prepare("UPDATE membership_requests SET status = 'approved', redeem_code = ? WHERE id = ?");
@@ -438,7 +451,7 @@ class Library
             // 1. Validate Code
             $stmt = $this->pdo->prepare("SELECT * FROM membership_codes WHERE code = ? AND (expires_at IS NULL OR expires_at > NOW())");
             $stmt->execute([$code]);
-            $mc = $stmt->fetch();
+            $mc = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!$mc) return ['success' => false, 'message' => 'Invalid or expired redemption code.'];
 
@@ -452,46 +465,84 @@ class Library
             $stmt->execute([$mc['id']]);
             if ($stmt->fetchColumn() >= $mc['usage_limit']) return ['success' => false, 'message' => 'This code has reached its maximum usage limit.'];
 
-            // 4. Record Usage
-            $stmt = $this->pdo->prepare("INSERT INTO membership_code_usage (code_id, user_id) VALUES (?, ?)");
-            $stmt->execute([$mc['id'], $userId]);
-
-            // 5. Grant Subscription (30 days)
+            // 4. Determine Host/Member Relationship and Expiry
+            $isHost = ((int)$userId === (int)($mc['owner_id'] ?? 0));
             $tier = strtolower($mc['tier']);
-            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, tier, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");
-            $stmt->execute([$userId, $tier]);
+            $parentId = null;
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+1 month'));
 
-            // 6. Sync User Profile
-            $activeStmt = $this->pdo->prepare("SELECT tier, expires_at FROM user_subscriptions WHERE user_id = ? AND expires_at > NOW()");
-            $activeStmt->execute([$userId]);
-            $subs = $activeStmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            $bestTier = 'bronze';
-            $maxExpiry = null;
-            $tiersFound = array_column($subs, 'tier');
-            if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
-            elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
-            elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
-
-            if ($bestTier !== 'bronze') {
-                foreach ($subs as $s) {
-                    if ($s['tier'] === $bestTier) {
-                        if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
-                            $maxExpiry = $s['expires_at'];
-                        }
-                    }
+            if (!$isHost && $mc['owner_id']) {
+                // Find host's active subscription for this tier
+                $stmt = $this->pdo->prepare("SELECT id, expires_at FROM user_subscriptions WHERE user_id = ? AND tier = ? AND is_host = 1 AND expires_at > NOW() ORDER BY expires_at DESC LIMIT 1");
+                $stmt->execute([$mc['owner_id'], $tier]);
+                $hostSub = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($hostSub) {
+                    $parentId = $hostSub['id'];
+                    $expiresAt = $hostSub['expires_at']; // Sync member expiry with host
                 }
             }
 
-            $upd = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
-            $upd->execute([$bestTier, $maxExpiry, $userId]);
+            // 5. Grant Subscription
+            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, parent_id, is_host, tier, expires_at) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$userId, $parentId, $isHost ? 1 : 0, $tier, $expiresAt]);
+
+            // 6. Record Usage
+            $stmt = $this->pdo->prepare("INSERT INTO membership_code_usage (code_id, user_id) VALUES (?, ?)");
+            $stmt->execute([$mc['id'], $userId]);
+
+            // 7. Sync User Profile (BEST Active Tier)
+            $this->syncUserProfileTier($userId);
 
             $this->pdo->commit();
             return ['success' => true, 'tier' => $tier];
         } catch (\Exception $e) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            error_log("REDEMPTION ERROR: " . $e->getMessage());
             return ['success' => false, 'message' => 'System error during redemption.'];
         }
+    }
+
+    /**
+     * Helper to recalculate and sync a user's primary membership tier based on active subscriptions
+     */
+    public function syncUserProfileTier(int $userId): void
+    {
+        // 1. Find all active subscriptions (independent or linked to active parent)
+        $sql = "SELECT us.tier, us.expires_at 
+                FROM user_subscriptions us
+                LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+                WHERE us.user_id = ? 
+                AND (
+                    (us.parent_id IS NULL AND us.expires_at > NOW()) 
+                    OR 
+                    (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+                )";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$userId]);
+        $subs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $bestTier = 'bronze';
+        $maxExpiry = null;
+        $tiersFound = array_column($subs, 'tier');
+        
+        if (in_array('platinum', $tiersFound)) $bestTier = 'platinum';
+        elseif (in_array('gold', $tiersFound)) $bestTier = 'gold';
+        elseif (in_array('silver', $tiersFound)) $bestTier = 'silver';
+
+        if ($bestTier !== 'bronze') {
+            foreach ($subs as $s) {
+                if ($s['tier'] === $bestTier) {
+                    if (!$maxExpiry || strtotime($s['expires_at']) > strtotime($maxExpiry)) {
+                        $maxExpiry = $s['expires_at'];
+                    }
+                }
+            }
+        }
+
+        $upd = $this->pdo->prepare("UPDATE users SET membership_tier = ?, membership_expires_at = ? WHERE id = ?");
+        $upd->execute([$bestTier, $maxExpiry, $userId]);
     }
 
     public function rejectMembershipRequest(int $requestId, string $reason = ''): bool
@@ -620,7 +671,6 @@ class Library
     }
 
     // User requests to return a book (goes to admin for approval)
-    // User requests to return a book (goes to admin for approval)
     public function returnBook(string $bookId, int $userId, array $paymentData = []): bool
     {
         $method = $paymentData['method'] ?? null;
@@ -637,6 +687,111 @@ class Library
         $stmt->execute([$method, $screenshot, $userId, $bookId]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    // ======================== Sharing & Invitations ========================
+
+    public function sendInvitation(int $hostId, int $subId, string $email): array
+    {
+        // Check if host owns this sub and it's gold/platinum
+        $stmt = $this->pdo->prepare("SELECT tier FROM user_subscriptions WHERE id = ? AND user_id = ? AND is_host = 1 AND expires_at > NOW()");
+        $stmt->execute([$subId, $hostId]);
+        $sub = $stmt->fetch();
+        if (!$sub || !in_array($sub['tier'], ['gold', 'platinum'])) {
+            return ['success' => false, 'message' => 'Invalid or unauthorized host subscription.'];
+        }
+
+        // Check slots (max 5 members total)
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM user_subscriptions WHERE parent_id = ? AND expires_at > NOW()");
+        $stmt->execute([$subId]);
+        $activeMembers = (int)$stmt->fetchColumn();
+
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM membership_invitations WHERE subscription_id = ? AND status = 'pending'");
+        $stmt->execute([$subId]);
+        $pendingInvites = (int)$stmt->fetchColumn();
+
+        if ($activeMembers + $pendingInvites >= 5) {
+            return ['success' => false, 'message' => 'No slots available. Limit: 5 members per group.'];
+        }
+
+        // Generate token
+        $token = bin2hex(random_bytes(16));
+        $stmt = $this->pdo->prepare("INSERT INTO membership_invitations (host_user_id, subscription_id, email, token) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$hostId, $subId, $email, $token]);
+
+        return ['success' => true, 'message' => 'Invitation sent to ' . $email, 'token' => $token];
+    }
+
+    public function acceptInvitation(int $userId, string $token): array
+    {
+        try {
+            if (!$this->pdo->inTransaction()) $this->pdo->beginTransaction();
+
+            $stmt = $this->pdo->prepare("SELECT * FROM membership_invitations WHERE token = ? AND status = 'pending'");
+            $stmt->execute([$token]);
+            $inv = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$inv) return ['success' => false, 'message' => 'Invalid or expired invitation.'];
+
+            // Link to Host's subscription
+            $stmt = $this->pdo->prepare("SELECT * FROM user_subscriptions WHERE id = ? AND expires_at > NOW()");
+            $stmt->execute([$inv['subscription_id']]);
+            $hostSub = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$hostSub) return ['success' => false, 'message' => 'Host subscription is no longer active.'];
+
+            // 1. Create member subscription
+            $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, parent_id, is_host, tier, expires_at) VALUES (?, ?, 0, ?, ?)");
+            $stmt->execute([$userId, $hostSub['id'], $hostSub['tier'], $hostSub['expires_at']]);
+            $subId = $this->pdo->lastInsertId();
+
+            // 2. Mark invitation as accepted
+            $stmt = $this->pdo->prepare("UPDATE membership_invitations SET status = 'accepted' WHERE id = ?");
+            $stmt->execute([$inv['id']]);
+
+            // 3. Mark user's active card
+            $stmt = $this->pdo->prepare("UPDATE users SET active_subscription_id = ? WHERE id = ?");
+            $stmt->execute([$subId, $userId]);
+
+            $this->syncUserProfileTier($userId);
+
+            $this->pdo->commit();
+            return ['success' => true, 'message' => 'Invitation accepted! You are now a shared ' . ucfirst($hostSub['tier']) . ' member.'];
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            return ['success' => false, 'message' => 'Error: ' . $e->getMessage()];
+        }
+    }
+
+    public function getPendingInvitationsForUser(string $email): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT mi.*, u.username as host_username 
+            FROM membership_invitations mi
+            JOIN users u ON mi.host_user_id = u.id
+            WHERE mi.email = ? AND mi.status = 'pending'
+        ");
+        $stmt->execute([$email]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function getGroupMembers(int $subId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT u.username, u.email, us.id as sub_id, us.created_at as joined_at 
+            FROM user_subscriptions us
+            JOIN users u ON us.user_id = u.id
+            WHERE us.parent_id = ? AND (us.expires_at > NOW() OR us.expires_at IS NULL)
+        ");
+        $stmt->execute([$subId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function getSentInvitations(int $subId): array
+    {
+        $stmt = $this->pdo->prepare("SELECT * FROM membership_invitations WHERE subscription_id = ? AND status = 'pending'");
+        $stmt->execute([$subId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
@@ -1238,6 +1393,19 @@ class Library
     }
 
     // ======================== Accounting Management ========================
+
+    public function setActiveCard(int $userId, int $subscriptionId): bool
+    {
+        // Verify this card belongs to user and is NOT expired
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM user_subscriptions WHERE id = ? AND user_id = ? AND expires_at > NOW()");
+        $stmt->execute([$subscriptionId, $userId]);
+        if ((int)$stmt->fetchColumn() === 0) {
+             return false;
+        }
+
+        $stmt = $this->pdo->prepare("UPDATE users SET active_subscription_id = ? WHERE id = ?");
+        return $stmt->execute([$subscriptionId, $userId]);
+    }
 
     public function addTransaction(string $type, string $category, float $amount, ?string $description, ?string $refId = null, ?string $refTable = null, ?int $userId = null): bool
     {

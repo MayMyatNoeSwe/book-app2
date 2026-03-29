@@ -36,22 +36,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
     
     switch ($action) {
         case 'borrow':
-            $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-            $stmt->execute([$userId]);
-            $currentBorrows = (int)$stmt->fetchColumn();
-            
-            if ($currentBorrows >= 3) {
-                $message = 'You have reached the maximum borrow limit of 3 books. Please return a book first.';
-                $messageType = 'error';
+            // The library class now handles the multi-card limit check internally in borrowBook
+            if ($library->borrowBook($bookId, $userId)) {
+                $message = 'Borrow request submitted! Waiting for admin approval.';
+                $messageType = 'success';
+                $book = $library->getBookById($bookId);
             } else {
-                if ($library->borrowBook($bookId, $userId)) {
-                    $message = 'Borrow request submitted! Waiting for admin approval.';
-                    $messageType = 'success';
-                    $book = $library->getBookById($bookId);
+                // Determine why it failed
+                $rules = $library->getMembershipRules($userId);
+                $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND status IN ('pending','approved')");
+                $stmt->execute([$userId, $rules['sub_id']]);
+                $count = (int)$stmt->fetchColumn();
+                
+                if ($count >= $rules['limit']) {
+                    $message = "You have reached the maximum borrow limit of {$rules['limit']} books for your active card. Please return a book first or switch to another member card.";
                 } else {
-                    $message = 'Unable to borrow this book. You may already have a pending request.';
-                    $messageType = 'error';
+                    $message = 'Unable to borrow this book. You may already have a pending request or it might be unavailable.';
                 }
+                $messageType = 'error';
             }
             break;
             
@@ -124,16 +126,25 @@ $unreturnedBooksCount = 0;
 $hasPendingBorrow = false;
 $isReturnPending = false;
 if (Auth::check()) {
-    $isCurrentlyBorrowing = $library->isCurrentlyBorrowing(Auth::id(), $bookId);
-    $hasPendingBorrow = $library->hasPendingBorrow(Auth::id(), $bookId);
     $userId = Auth::id();
+    $isCurrentlyBorrowing = $library->isCurrentlyBorrowing($userId, $bookId);
+    $hasPendingBorrow = $library->hasPendingBorrow($userId, $bookId);
     $pdo = $library->getPdo();
+    
+    // Fetch membership rules for the active card
+    $msRules = $library->getMembershipRules($userId);
+    $borrowLimit = $msRules['limit'];
+    $borrowDuration = $msRules['days'];
+    $borrowFine = $msRules['fine'];
+    $activeSubId = $msRules['sub_id'];
+
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-    $stmt->execute([$userId]);
+    // Count unreturned books FOR THE ACTIVE CARD
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
+    $stmt->execute([$userId, $activeSubId]);
     $unreturnedBooksCount = $stmt->fetchColumn();
 
     // Check if return is pending for this book
@@ -805,17 +816,16 @@ function borrowLoginAlert() {
 
 // ─── Borrow Confirmation Alert ───
 function confirmBorrow() {
-    <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+    <?php if (Auth::check() && $unreturnedBooksCount >= $borrowLimit): ?>
     Swal.fire({
         icon: 'error',
         title: 'Borrow Limit Reached',
         html: '<div style="font-size:15px;line-height:1.7;">' +
-              'You currently have <strong><?= $unreturnedBooksCount ?></strong> unreturned books (max 3).<br>' +
-              'Please return a book before borrowing a new one.' +
+              'You currently have <strong><?= $unreturnedBooksCount ?></strong> unreturned books on this card (max <?= $borrowLimit ?>).<br>' +
+              'Please return a book or switch to another member card before borrowing.' +
               '</div>',
         confirmButtonText: 'Got it',
         confirmButtonColor: '#d48b71',
-        customClass: { popup: 'swal-borrow-popup' }
     });
     <?php else: ?>
     Swal.fire({
@@ -823,16 +833,19 @@ function confirmBorrow() {
         html: '<div style="text-align:left;font-size:14px;line-height:1.8;padding:4px 0;">' +
               '<div style="background:rgba(212,139,113,0.08);border-radius:12px;padding:14px 16px;margin-bottom:16px;">' +
               '<div style="font-weight:700;margin-bottom:4px;color:#d48b71;"><i class="fas fa-info-circle me-1"></i> Borrowing Policy</div>' +
-              '<div style="color:#6b7280;">Return within <strong>14 days</strong>. Late returns incur <strong>500 Ks/day</strong> penalty.</div>' +
+              '<div style="color:#6b7280;">Return within <strong><?= $borrowDuration ?> days</strong>. Late returns incur <strong><?= number_format($borrowFine) ?> Ks/day</strong> penalty.</div>' +
               '</div>' +
               '<div style="display:flex;flex-direction:column;gap:6px;">' +
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
-              '<div><i class="fas fa-calendar-day me-2" style="color:#10b981;width:18px;"></i><strong>Duration:</strong> 14 Days</div>' +
-              '<div><i class="fas fa-clock me-2" style="color:#f59e0b;width:18px;"></i><strong>Due Date:</strong> <?= date("M j, Y", strtotime("+14 days")) ?></div>' +
-              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Unreturned:</strong> <?= $unreturnedBooksCount ?> / 3</div>' +
+              '<div><i class="fas fa-calendar-day me-2" style="color:#10b981;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
+              '<div><i class="fas fa-clock me-2" style="color:#f59e0b;width:18px;"></i><strong>Due Date:</strong> <?= date("M j, Y", strtotime("+".$borrowDuration." days")) ?></div>' +
+              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Current card usage:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?></div>' +
               '</div>' +
               '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +
-              '<i class="fas fa-shield-alt me-1"></i> Your request will be reviewed and approved by our admin team.' +
+              '<i class="fas fa-shield-alt me-1"></i> Card used: <strong>' + <?= json_encode(ucfirst($msRules['tier'] ?: 'Bronze')) ?> + ' Member</strong>' +
+              '</div>' +
+              '<div style="margin-top:8px;background:#e0f2fe;border-radius:8px;padding:10px 12px;font-size:12px;color:#0369a1;">' +
+              '<i class="fas fa-info-circle me-1"></i> Your request will be reviewed and approved by our admin team.' +
               '</div>' +
               '</div>',
         icon: 'question',

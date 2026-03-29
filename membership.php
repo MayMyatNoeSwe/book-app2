@@ -33,23 +33,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_code'])) {
     header("Location: membership.php");
     exit;
 }
-$subRecords = Auth::getSubscriptions(); // [[tier => ..., expires_at => ...]]
-$activeTiers = [];
-foreach($subRecords as $sr) {
-    if (!isset($activeTiers[$sr['tier']])) {
-        $activeTiers[$sr['tier']] = ['expiry' => $sr['expires_at'], 'count' => 0];
+
+// SET ACTIVE CARD HANDLER
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['set_active_card'])) {
+    $cardId = (int)$_POST['card_id'];
+    $lib = new \App\Library($pdo);
+    if ($lib->setActiveCard($userId, $cardId)) {
+        $_SESSION['flash_message'] = ['text' => "SUCCESS! Member Card #$cardId is now your active card.", 'type' => 'success'];
+    } else {
+        $_SESSION['flash_message'] = ['text' => "Failed to set active card.", 'type' => 'danger'];
     }
-    if (strtotime($sr['expires_at']) > strtotime($activeTiers[$sr['tier']]['expiry'])) {
-        $activeTiers[$sr['tier']]['expiry'] = $sr['expires_at'];
-    }
-    $activeTiers[$sr['tier']]['count']++;
+    header("Location: membership.php");
+    exit;
 }
-$currentTier = strtolower($pdo->query("SELECT membership_tier FROM users WHERE id = $userId")->fetchColumn() ?: 'bronze');
+$allSubCards = Auth::getSubscriptions(); 
+$activeCardId = Auth::getActiveCardId();
+
+// SORT CARDS BY LEVEL (Bronze -> Silver -> Gold -> Platinum)
+$tierPriority = ['bronze' => 1, 'silver' => 2, 'gold' => 3, 'platinum' => 4];
+usort($allSubCards, function($a, $b) use ($tierPriority) {
+    $pA = $tierPriority[$a['tier']] ?? 0;
+    $pB = $tierPriority[$b['tier']] ?? 0;
+    if ($pA === $pB) return strtotime($b['expires_at']) - strtotime($a['expires_at']);
+    return $pA - $pB;
+});
 
 // Fetch all approved requests with codes for this user
 $stmt = $pdo->prepare("SELECT tier, redeem_code, created_at FROM membership_requests WHERE user_id = ? AND status = 'approved' AND redeem_code IS NOT NULL ORDER BY id DESC");
 $stmt->execute([$userId]);
 $releasedCodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// FETCH SHARING DETAILS
+$memberCounts = [];
+if (!empty($allSubCards)) {
+    $parentIds = array_filter(array_column($allSubCards, 'id'));
+    if ($parentIds) {
+        $placeholders = implode(',', array_fill(0, count($parentIds), '?'));
+        $countStmt = $pdo->prepare("SELECT parent_id, COUNT(*) as count FROM user_subscriptions WHERE parent_id IN ($placeholders) GROUP BY parent_id");
+        $countStmt->execute($parentIds);
+        $memberCounts = $countStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+}
+// Get the code associated with the user's purchase
+$stmt = $pdo->prepare("SELECT tier, code FROM membership_codes WHERE owner_id = ?");
+$stmt->execute([$userId]);
+$sharingCodes = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
 $tiers = [
     'bronze' => [
@@ -66,7 +94,7 @@ $tiers = [
     ],
     'silver' => [
         'name' => 'Silver',
-        'price' => (int)getSetting('silver_price', 10000),
+        'price' => (int)getSetting('silver_price', 5000),
         'color' => '#bdc3c7',
         'gradient' => 'linear-gradient(135deg, #bdc3c7, #2c3e50)',
         'benefits' => [
@@ -78,7 +106,7 @@ $tiers = [
     ],
     'gold' => [
         'name' => 'Gold',
-        'price' => (int)getSetting('gold_price', 25000),
+        'price' => (int)getSetting('gold_price', 12000),
         'color' => '#f1c40f',
         'gradient' => 'linear-gradient(135deg, #f1c40f, #f39c12)',
         'benefits' => [
@@ -90,7 +118,7 @@ $tiers = [
     ],
     'platinum' => [
         'name' => 'Platinum',
-        'price' => (int)getSetting('platinum_price', 50000),
+        'price' => (int)getSetting('platinum_price', 25000),
         'color' => '#1e293b',
         'gradient' => 'linear-gradient(135deg, #1e293b, #334155)',
         'benefits' => [
@@ -154,6 +182,8 @@ include 'views/header.php';
 .btn-tier-outline:hover { background: rgba(0,0,0,0.06); }
 .btn-tier-primary { background: var(--bookhouse-orange); color: #fff; box-shadow: 0 8px 16px rgba(224,122,95,0.3); }
 .btn-tier-primary:hover { filter: brightness(1.1); transform: translateY(-2px); }
+.btn-tier-success { background: #10b981; color: #fff; box-shadow: 0 8px 16px rgba(16,185,129,0.3); }
+.btn-tier-success:hover { filter: brightness(1.1); transform: translateY(-2px); }
 
 [data-bs-theme="dark"] .btn-tier-outline { background: rgba(255,255,255,0.05); color: #fff; border-color: rgba(255,255,255,0.1); }
 
@@ -232,60 +262,93 @@ include 'views/header.php';
 </section>
 
 <div class="container pb-5">
-    <div class="row g-4">
-        <?php 
-        $currentTierPrice = $tiers[$currentTier]['price'] ?? 0;
-        foreach ($tiers as $key => $tier): 
-            $tierData = $activeTiers[$key] ?? null;
-            $isActive = $tierData || ($key === 'bronze' && empty($activeTiers));
-            $expiry = $tierData['expiry'] ?? null;
-            $count = $tierData['count'] ?? 0;
-            $isPrimary = ($currentTier === $key);
-        ?>
-        <div class="col-lg-3 col-md-6 text-start">
-            <div class="ms-card <?= $isActive ? 'active' : '' ?>">
-                <?php if ($isPrimary): ?>
-                    <div class="tier-badge">Primary</div>
-                <?php elseif ($isActive): ?>
-                    <div class="tier-badge" style="background: #22c55e;">Active</div>
-                <?php endif; ?>
+    <div class="row g-4 justify-content-center">
+        <!-- DEFAULT CARD -->
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="ms-card <?= !$activeCardId ? 'active' : '' ?>">
+                <?php if (!$activeCardId): ?><div class="tier-badge">Primary</div><?php endif; ?>
+                <div class="tier-icon" style="background: linear-gradient(135deg, #cd7f32, #8b4513)"><i class="fas fa-certificate"></i></div>
+                <h3 class="tier-name">Bronze</h3>
+                <div class="tier-price">FREE</div>
+                <ul class="benefit-list">
+                    <?php foreach ($tiers['bronze']['benefits'] as $b): ?>
+                        <li class="benefit-item"><i class="fas fa-check-circle"></i><?= $b ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <button class="btn btn-tier btn-tier-outline mt-auto" disabled>Default Card</button>
+            </div>
+        </div>
 
-                <?php if ($isActive && $expiry && $key !== 'bronze'): ?>
-                    <div class="small fw-bold text-success mb-2" style="font-size: 11px;">
-                        <i class="fas fa-clock me-1"></i> Max Expire: <?= date('M j, Y', strtotime($expiry)) ?>
-                        <?php if ($count > 1): ?>
-                            <span class="badge bg-primary ms-1"><?= $count ?> Purchased</span>
-                        <?php endif; ?>
+        <!-- PURCHASED CARDS -->
+        <?php foreach ($allSubCards as $card): 
+            $key = $card['tier'];
+            $tier = $tiers[$key];
+            $isPrimary = ($activeCardId === (int)$card['id']);
+            $isHost = (bool)$card['is_host'];
+            $parentId = $card['parent_id'];
+            $mCount = $memberCounts[$card['id']] ?? 0;
+            $shareCode = $sharingCodes[$key] ?? null;
+        ?>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="ms-card <?= $isPrimary ? 'active' : '' ?>">
+                <?php if ($isPrimary): ?><div class="tier-badge">Primary</div><?php endif; ?>
+                <div class="tier-icon" style="background: <?= $tier['gradient'] ?>"><i class="fas fa-crown"></i></div>
+                <h3 class="tier-name"><?= $tier['name'] ?></h3>
+                
+                <?php if ($parentId): ?>
+                    <div class="badge bg-soft-info text-info rounded-pill px-3 mb-2 small w-fit">
+                        <i class="fas fa-users me-1"></i> Family Member
+                    </div>
+                <?php elseif ($isHost && in_array($key, ['gold', 'platinum'])): ?>
+                    <div class="badge bg-soft-warning text-warning rounded-pill px-3 mb-2 small w-fit">
+                        <i class="fas fa-crown me-1"></i> Group Host
                     </div>
                 <?php endif; ?>
 
-                <div class="tier-icon" style="background: <?= $tier['gradient'] ?>">
-                    <i class="fas fa-crown"></i>
-                </div>
-                
-                <h3 class="tier-name"><?= $tier['name'] ?></h3>
-                <div class="tier-price">
-                    <?= $tier['price'] === 0 ? 'Free' : number_format($tier['price']) ?> 
-                    <?php if ($tier['price'] > 0): ?><span>Ks/mo</span><?php endif; ?>
-                </div>
+                <div class="small text-muted mb-2">Card #<?= $card['id'] ?> | Exp: <?= date('M d, Y', strtotime($card['expires_at'])) ?></div>
+                <?php if ($parentId): ?>
+                    <div class="p-2 px-3 bg-light rounded-4 mb-3 text-start mb-auto">
+                        <span class="smallest text-uppercase fw-800 text-muted d-block">Shared By</span>
+                        <span class="fw-800 text-dark"><?= htmlspecialchars($card['host_name'] ?? 'The Host') ?></span>
+                    </div>
+                <?php endif; ?>
 
+                <div class="tier-price"><?= number_format($tier['price']) ?> <span>Ks/mo</span></div>
                 <ul class="benefit-list">
-                    <?php foreach ($tier['benefits'] as $benefit): ?>
-                        <li class="benefit-item">
-                            <i class="fas fa-check-circle"></i>
-                            <?= $benefit ?>
-                        </li>
+                    <?php foreach ($tier['benefits'] as $b): ?>
+                        <li class="benefit-item"><i class="fas fa-check-circle"></i><?= $b ?></li>
                     <?php endforeach; ?>
                 </ul>
+                <div class="d-flex flex-column gap-2 mt-auto">
+                    <?php if (!$isPrimary): ?>
+                         <button class="btn btn-tier btn-tier-success w-100" onclick="setActiveCard(<?= $card['id'] ?>)">Select as Active Card</button>
+                    <?php endif; ?>
+                    <?php if (!$parentId): ?>
+                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Again / Renew</button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
 
-                <?php if ($key === 'bronze'): ?>
-                    <button class="btn btn-tier btn-tier-outline" disabled>Default Plan</button>
-                <?php else: ?>
-                    <button class="btn btn-tier btn-tier-primary" 
-                            onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">
-                        <?= $isActive ? 'Buy Again' : 'Join Now' ?>
-                    </button>
-                <?php endif; ?>
+        <!-- NEW OPTIONS -->
+        <?php 
+        $ownedTiers = array_unique(array_column($allSubCards, 'tier'));
+        foreach (['silver', 'gold', 'platinum'] as $key): 
+            if (in_array($key, $ownedTiers)) continue;
+            $tier = $tiers[$key];
+        ?>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="ms-card" style="opacity: 0.8; border-style: dashed;">
+                <div class="tier-icon" style="background: #94a3b8"><i class="fas fa-plus"></i></div>
+                <h3 class="tier-name"><?= $tier['name'] ?></h3>
+                <div class="tier-price"><?= number_format($tier['price']) ?> <span>Ks/mo</span></div>
+                <ul class="benefit-list text-muted">
+                    <?php foreach ($tier['benefits'] as $b): ?>
+                        <li class="benefit-item"><i class="fas fa-check-circle opacity-50"></i><?= $b ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <button class="btn btn-tier btn-tier-primary w-100 mt-auto" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Join Now</button>
             </div>
         </div>
         <?php endforeach; ?>
@@ -293,6 +356,17 @@ include 'views/header.php';
 </div>
 
 <script>
+function setActiveCard(cardId) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+        <input type="hidden" name="set_active_card" value="1">
+        <input type="hidden" name="card_id" value="${cardId}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function upgradeTier(tierKey, tierName, price) {
     if (price === 0) {
         confirmUpgrade(tierKey, tierName, 'Free');
@@ -448,13 +522,17 @@ function confirmUpgrade(tierKey, tierName) {
 document.querySelectorAll('.copy-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const code = this.dataset.code;
+        const btn = this;
         navigator.clipboard.writeText(code).then(() => {
-            const originalText = this.innerHTML;
-            this.innerHTML = '<i class="fas fa-check"></i> Copied';
-            this.classList.replace('btn-soft-primary', 'btn-success');
+            const originalText = btn.innerHTML;
+            const originalClass = btn.className;
+            
+            btn.innerHTML = '<i class="fas fa-check"></i>' + (originalText.includes('Copy') ? ' Copied' : '');
+            btn.classList.add('btn-success');
+            
             setTimeout(() => {
-                this.innerHTML = originalText;
-                this.classList.replace('btn-success', 'btn-soft-primary');
+                btn.innerHTML = originalText;
+                btn.className = originalClass;
             }, 2000);
         });
     });

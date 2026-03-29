@@ -80,6 +80,22 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $reviews = $stmt->fetchAll();
 
+// --- SHARING LOGIC ---
+$lib = new \App\Library($pdo);
+$isHost = false;
+$hostSubId = null;
+foreach ($activeSubs as $sub) {
+    if ($sub['is_host'] && in_array($sub['tier'], ['gold', 'platinum'])) {
+        $isHost = true;
+        $hostSubId = $sub['id'];
+        break;
+    }
+}
+
+$pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
+$groupMembers = $hostSubId ? $lib->getGroupMembers($hostSubId) : [];
+$sentInvites = $hostSubId ? $lib->getSentInvitations($hostSubId) : [];
+
 include 'views/header.php';
 ?>
 
@@ -300,6 +316,12 @@ include 'views/header.php';
                         <div class="ud-badge">
                             <i class="fas fa-shield-alt"></i> <?= strtoupper($user['role'] ?? 'USER') ?>
                         </div>
+                        
+                        <?php if ($isHost): ?>
+                            <button class="btn btn-sm btn-outline-primary rounded-pill px-3 ms-2 fw-800" data-bs-toggle="modal" data-bs-target="#manageSharingModal">
+                                <i class="fas fa-users me-1"></i> Manage Family Shares
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -391,6 +413,29 @@ include 'views/header.php';
         </div>
     </div>
 </div>
+
+<?php if (!empty($pendingInvitesForMe)): ?>
+<section class="mb-5 animate__animated animate__fadeIn">
+    <div class="container text-start">
+        <?php foreach ($pendingInvitesForMe as $inv): ?>
+            <div class="alert alert-info border-0 shadow-sm rounded-4 d-flex justify-content-between align-items-center p-4">
+                <div class="d-flex align-items-center">
+                    <div class="ud-stat-icon gold rounded-circle me-3" style="flex-shrink:0;"><i class="fas fa-envelope-open-text"></i></div>
+                    <div>
+                        <h6 class="mb-0 fw-800">Membership Invitation!</h6>
+                        <span class="text-muted small"><strong><?= e($inv['host_username']) ?></strong> is inviting you to join their Family Group. Enjoy premium benefits for free!</span>
+                    </div>
+                </div>
+                <form action="api/membership_invitations.php" method="POST" class="ms-3">
+                    <input type="hidden" name="action" value="accept">
+                    <input type="hidden" name="token" value="<?= e($inv['token']) ?>">
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">Accept Invite</button>
+                </form>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</section>
+<?php endif; ?>
 
 <!-- ═══════  MAIN CONTENT  ═══════ -->
 <section class="ud-main">
@@ -582,5 +627,73 @@ include 'views/header.php';
         </div>
     </div>
 </section>
+
+<?php if ($isHost): ?>
+<!-- Manage Sharing Modal -->
+<div class="modal fade" id="manageSharingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-5 border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-800"><i class="fas fa-users-cog me-2 text-primary"></i>Family Sharing</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="small text-muted mb-4 text-start">Share your premium benefits with up to 5 family members. Simply enter their email address to invite them.</p>
+                
+                <!-- Invite Form -->
+                <form action="api/membership_invitations.php" method="POST" class="mb-4">
+                    <input type="hidden" name="action" value="send">
+                    <input type="hidden" name="sub_id" value="<?= $hostSubId ?>">
+                    <div class="input-group">
+                        <input type="email" name="email" class="form-control rounded-start-pill border-light-subtle px-3" placeholder="Enter member email" required>
+                        <button class="btn btn-primary rounded-end-pill px-4 fw-bold" type="submit">Invite</button>
+                    </div>
+                </form>
+
+                <hr class="opacity-10 mb-4">
+
+                <!-- Current Members -->
+                <div class="mb-4">
+                    <h6 class="smallest text-uppercase fw-800 text-muted mb-3 text-start">Group Members (<?= count($groupMembers) ?>/5)</h6>
+                    <?php if (empty($groupMembers)): ?>
+                        <div class="text-center py-2 text-muted italic small">No active members yet.</div>
+                    <?php else: ?>
+                        <?php foreach ($groupMembers as $m): ?>
+                            <div class="p-2 px-3 bg-light rounded-4 mb-2 d-flex justify-content-between align-items-center">
+                                <div class="text-start">
+                                    <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
+                                    <div class="smallest text-muted"><?= e($m['email']) ?></div>
+                                </div>
+                                <span class="badge bg-soft-success text-success rounded-pill px-2 smaller">Active</span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Pending Invites -->
+                <div>
+                    <h6 class="smallest text-uppercase fw-800 text-muted mb-3 text-start">Pending Invitations</h6>
+                    <?php if (empty($sentInvites)): ?>
+                        <div class="text-center py-2 text-muted italic small">No pending invites.</div>
+                    <?php else: ?>
+                        <?php foreach ($sentInvites as $si): ?>
+                            <div class="p-2 px-3 border rounded-4 mb-2 d-flex justify-content-between align-items-center opacity-75">
+                                <div class="text-start">
+                                    <div class="fw-800 small text-dark"><?= e($si['email']) ?></div>
+                                    <div class="smallest text-muted">Sent: <?= date('M d', strtotime($si['created_at'])) ?></div>
+                                </div>
+                                <span class="badge bg-light text-muted rounded-pill px-2 smaller border">Pending</span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php include 'views/footer.php'; ?>

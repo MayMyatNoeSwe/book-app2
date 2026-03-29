@@ -71,7 +71,12 @@ class Cart
      */
     private function getShoppingBenefits(int $userId): array
     {
-        $stmt = $this->pdo->prepare("SELECT membership_tier FROM users WHERE id = ?");
+        $stmt = $this->pdo->prepare("
+            SELECT us.tier 
+            FROM users u
+            JOIN user_subscriptions us ON u.active_subscription_id = us.id
+            WHERE u.id = ? AND us.expires_at > NOW()
+        ");
         $stmt->execute([$userId]);
         $tier = $stmt->fetchColumn() ?: 'bronze';
 
