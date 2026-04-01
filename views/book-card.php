@@ -105,20 +105,20 @@ $showBorrow = $showBorrow ?? Auth::check();
                 <!-- Guest User -->
                 <div class="guest-actions">
                     <?php if ($book instanceof \App\EBook): ?>
-                        <a href="login.php" class="btn btn-primary w-100 fw-bold">
-                            <i class="fas fa-sign-in-alt me-1"></i> Login to Download
-                        </a>
+                        <button type="button" onclick="showLoginAlert('Please login to download this e-book.')" class="btn btn-primary w-100 fw-bold">
+                            <i class="fas fa-sign-in-alt me-1"></i> Download Now
+                        </button>
                     <?php elseif ($book->isAvailable()): ?>
-                        <a href="login.php" class="btn btn-primary w-100 fw-bold mb-2">
-                            <i class="fas fa-book me-1"></i> Login to Borrow
-                        </a>
+                        <button type="button" onclick="showLoginAlert('Please login to borrow this book.')" class="btn btn-primary w-100 fw-bold mb-2">
+                            <i class="fas fa-book me-1"></i> Borrow Now
+                        </button>
                         <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-outline-primary w-100 btn-sm fw-bold">
                             <i class="fas fa-shopping-cart me-1"></i> Add to Cart
                         </button>
                     <?php else: ?>
-                        <a href="login.php" class="btn btn-outline-info w-100 fw-bold mb-2">
-                            <i class="fas fa-sign-in-alt me-1"></i> Login to Borrow
-                        </a>
+                        <button type="button" onclick="showLoginAlert('Please login to borrow this book.')" class="btn btn-outline-info w-100 fw-bold mb-2">
+                            <i class="fas fa-sign-in-alt me-1"></i> Borrow Now
+                        </button>
                         <button onclick="addToCart('<?= e($book->getId()) ?>')" class="btn btn-primary w-100 fw-bold" style="background:#524f7d; border-color:#524f7d;">
                             <i class="fas fa-calendar-check me-1"></i> Pre-order
                         </button>

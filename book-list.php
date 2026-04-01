@@ -67,19 +67,26 @@ if ($search) {
     $pageTitle = "Book Library";
 }
 
-// User Borrowing Stats for the Modal
+// User Borrowing Stats for the Modal (Multi-Card & Group Aware)
 $hasBorrowedBefore = false;
 $unreturnedBooksCount = 0;
+$borrowLimit = 3; // Default
 if (Auth::check()) {
     $userId = Auth::id();
     $pdo = $library->getPdo();
+
+    // Membership Rules for Active Card
+    $msRules = $library->getMembershipRules($userId);
+    $activeSubId = $msRules['sub_id'];
+    $groupSize = $library->getGroupMemberCount($activeSubId);
+    $borrowLimit = (int)$msRules['limit'] * $groupSize;
+
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL");
-    $stmt->execute([$userId]);
-    $unreturnedBooksCount = $stmt->fetchColumn();
+    // Group Usage for Active Card
+    $unreturnedBooksCount = $library->getGroupUsageCount($activeSubId);
 }
 
 include 'views/header.php';
@@ -884,8 +891,8 @@ include 'views/header.php';
                         <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
                         <li>
                             <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
-                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
-                            <?php if ($unreturnedBooksCount >= 3): ?>
+                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?> 
+                            <?php if ($unreturnedBooksCount >= $borrowLimit): ?>
                                 <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
                             <?php elseif ($unreturnedBooksCount > 0): ?>
                                 <span class="text-danger small">(Please return on time)</span>
@@ -895,17 +902,17 @@ include 'views/header.php';
                 </div>
                 <?php endif; ?>
 
-                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+                <?php if (Auth::check() && $unreturnedBooksCount >= $borrowLimit): ?>
                     <p class="fw-700 text-center mb-0 text-danger" style="font-size: 16px;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</p>
                 <?php else: ?>
                     <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
                 <?php endif; ?>
             </div>
             <div class="modal-footer flex-column gap-2 text-center">
-                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
+                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= $borrowLimit) ? 'disabled' : '' ?>>
                     <i class="fas fa-check me-2"></i>Confirm & Borrow
                 </button>
-                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?></button>
+                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= $borrowLimit) ? 'Close' : 'Maybe later' ?></button>
             </div>
         </div>
     </div>
@@ -951,20 +958,7 @@ function clearSearch() {
 let currentBookId = null;
 function quickBorrow(bookId) {
     <?php if (!Auth::check()): ?>
-        Swal.fire({
-            icon: 'info',
-            title: 'Login Required',
-            text: 'Please login to borrow this book.',
-            showCancelButton: true,
-            confirmButtonText: 'Login Now',
-            confirmButtonColor: '#0fac60', /* Greenish if they want, but image shows terra-cotta */
-            confirmButtonColor: '#E07A5F',
-            cancelButtonText: 'Later'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
-            }
-        });
+        showLoginAlert('Please login to borrow this book.');
         return;
     <?php endif; ?>
     currentBookId = bookId;

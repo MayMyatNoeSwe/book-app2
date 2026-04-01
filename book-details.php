@@ -133,7 +133,10 @@ if (Auth::check()) {
     
     // Fetch membership rules for the active card
     $msRules = $library->getMembershipRules($userId);
-    $borrowLimit = $msRules['limit'];
+    $individualLimit = $msRules['limit'];
+    $groupSize = $library->getGroupMemberCount($activeSubId);
+    $borrowLimit = $individualLimit * $groupSize; // Total capacity for the whole group
+    
     $borrowDuration = $msRules['days'];
     $borrowFine = $msRules['fine'];
     $activeSubId = $msRules['sub_id'];
@@ -142,10 +145,8 @@ if (Auth::check()) {
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    // Count unreturned books FOR THE ACTIVE CARD
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-    $stmt->execute([$userId, $activeSubId]);
-    $unreturnedBooksCount = $stmt->fetchColumn();
+    // Count unreturned books FOR THE ACTIVE GROUP
+    $unreturnedBooksCount = $library->getGroupUsageCount($activeSubId);
 
     // Check if return is pending for this book
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'return_pending'");
@@ -565,9 +566,9 @@ include 'views/header.php';
                                 <button class="bd-btn bd-btn-outline" disabled><i class="fas fa-times"></i> No Download</button>
                             <?php endif; ?>
                         <?php else: ?>
-                            <a href="login.php" class="bd-btn bd-btn-primary">
-                                <i class="fas fa-sign-in-alt"></i> Download
-                            </a>
+                            <button type="button" onclick="showLoginAlert('Please login to download this e-book.')" class="bd-btn bd-btn-primary">
+                                <i class="fas fa-sign-in-alt"></i> Download Now
+                            </button>
                         <?php endif; ?>
                     <?php else: ?>
                         <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
@@ -591,8 +592,8 @@ include 'views/header.php';
                                         <i class="fas fa-book"></i> Borrow
                                     </button>
                                 <?php else: ?>
-                                    <button type="button" class="bd-btn bd-btn-primary" onclick="borrowLoginAlert()">
-                                        <i class="fas fa-sign-in-alt"></i> Borrow
+                                    <button type="button" class="bd-btn bd-btn-primary" onclick="showLoginAlert('Please login to borrow this book.')">
+                                        <i class="fas fa-sign-in-alt"></i> Borrow Now
                                     </button>
                                 <?php endif; ?>
                             <?php else: ?>
@@ -604,8 +605,8 @@ include 'views/header.php';
                                         </button>
                                     </form>
                                 <?php else: ?>
-                                    <button type="button" class="bd-btn bd-btn-outline" onclick="borrowLoginAlert()">
-                                        <i class="fas fa-sign-in-alt"></i> Borrow
+                                    <button type="button" class="bd-btn bd-btn-outline" onclick="showLoginAlert('Please login to borrow this book.')">
+                                        <i class="fas fa-sign-in-alt"></i> Borrow Now
                                     </button>
                                 <?php endif; ?>
                             <?php endif; ?>
@@ -795,23 +796,7 @@ include 'views/header.php';
 <script>
 // ─── Login Required Alert (for non-logged-in users) ───
 function borrowLoginAlert() {
-    Swal.fire({
-        icon: 'info',
-        title: 'Login Required',
-        text: 'Please login to borrow this book.',
-        showCancelButton: true,
-        confirmButtonText: 'Login Now',
-        cancelButtonText: 'Later',
-        confirmButtonColor: '#d48b71',
-        cancelButtonColor: '#9ca3af',
-        reverseButtons: true,
-        showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
-        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = 'login.php';
-        }
-    });
+    showLoginAlert('Please login to borrow this book.');
 }
 
 // ─── Borrow Confirmation Alert ───

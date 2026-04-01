@@ -191,16 +191,57 @@ class Library
         ];
     }
 
+    public function getGroupUsageCount(int $subId): int
+    {
+        // 1. Identify the 'Root' (Host) Subscription ID
+        $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
+        $stmt->execute([$subId]);
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$sub) return 0;
+        $rootId = $sub['parent_id'] ?: $sub['id'];
+
+        // 2. Count unreturned books for the entire group
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*) FROM borrowing_history 
+            WHERE subscription_id IN (
+                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+            ) 
+            AND returned_at IS NULL AND `status` IN ('pending','approved')
+        ");
+        $stmt->execute([$rootId, $rootId]);
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getGroupMemberCount(int $subId): int
+    {
+        $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
+        $stmt->execute([$subId]);
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$sub) return 1;
+        $rootId = $sub['parent_id'] ?: $sub['id'];
+
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM user_subscriptions WHERE (id = ? OR parent_id = ?) AND (expires_at > NOW() OR expires_at IS NULL)");
+        $stmt->execute([$rootId, $rootId]);
+        return max(1, (int)$stmt->fetchColumn());
+    }
+
     public function borrowBook(string $bookId, int $userId): bool
     {
         $rules = $this->getMembershipRules($userId);
         
-        // Check unreturned books against CURRENT CARD limit (Multi-Card logic)
+        // --- 1. Individual Limit Check ("3 books each") ---
         $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
         $stmt->execute([$userId, $rules['sub_id']]);
-        $unreturnedBooks = (int)$stmt->fetchColumn();
+        if ((int)$stmt->fetchColumn() >= $rules['limit']) {
+            return false;
+        }
+
+        // --- 2. Group-wide Limit Check (Total = Limit * active_members) ---
+        $groupSize = $this->getGroupMemberCount($rules['sub_id']);
+        $totalGroupLimit = $rules['limit'] * $groupSize;
+        $totalGroupUsage = $this->getGroupUsageCount($rules['sub_id']);
         
-        if ($unreturnedBooks >= $rules['limit']) {
+        if ($totalGroupUsage >= $totalGroupLimit) {
             return false;
         }
 
@@ -336,7 +377,7 @@ class Library
     /**
      * Get borrow records for a specific user, filtered by status
      */
-    public function getUserBorrows(int $userId, string $type = 'active'): array
+    public function getUserBorrows(int $userId, string $type = 'active', ?int $subscriptionId = null): array
     {
         $sql = "SELECT bh.*, b.title, b.author, b.cover_image, b.category, b.borrow_price
                 FROM borrowing_history bh
@@ -344,9 +385,13 @@ class Library
                 WHERE bh.user_id = ?";
         
         $params = [$userId];
+        if ($subscriptionId) {
+            $sql .= " AND bh.subscription_id = ?";
+            $params[] = $subscriptionId;
+        }
         
-        if ($type === 'active') {
-            $sql .= " AND bh.returned_at IS NULL AND bh.status IN ('approved', 'return_pending')";
+        if ($type === 'active' || $type === 'current') {
+            $sql .= " AND bh.returned_at IS NULL AND bh.status IN ('pending', 'approved', 'return_pending')";
         } elseif ($type === 'pending') {
             $sql .= " AND bh.status = 'pending'";
         } elseif ($type === 'past') {
@@ -808,7 +853,7 @@ class Library
     public function getGroupMembers(int $subId): array
     {
         $stmt = $this->pdo->prepare("
-            SELECT u.username, u.email, us.id as sub_id, us.created_at as joined_at 
+            SELECT u.username, u.email, u.id as user_id, us.id as sub_id, us.created_at as joined_at 
             FROM user_subscriptions us
             JOIN users u ON us.user_id = u.id
             WHERE us.parent_id = ? AND (us.expires_at > NOW() OR us.expires_at IS NULL)

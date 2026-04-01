@@ -102,14 +102,24 @@ usort($possibleHostSubs, function($a, $b) use ($pri, $activeSubId) {
     return ($pri[$b['tier']] ?? 0) <=> ($pri[$a['tier']] ?? 0);
 });
 
+$isHost = false;
+$hostSubId = null;
+$hostSubTier = null;
+$groupMembers = [];
+
 if (!empty($possibleHostSubs)) {
     $isHost = true;
     $hostSubId = $possibleHostSubs[0]['id'];
     $hostSubTier = $possibleHostSubs[0]['tier'];
+    
+    $groupMembers = $lib->getGroupMembers($hostSubId);
+    foreach ($groupMembers as &$m) {
+        $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active', (int)$m['sub_id']);
+    }
+    unset($m);
 }
 
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
-$groupMembers = $hostSubId ? $lib->getGroupMembers($hostSubId) : [];
 $sentInvites = $hostSubId ? $lib->getSentInvitations($hostSubId) : [];
 
 include 'views/header.php';
@@ -308,6 +318,12 @@ include 'views/header.php';
     .ud-info p { justify-content: center; }
     .ud-item-img { width: 50px; height: 68px; }
 }
+
+.transition-all { transition: all 0.3s ease; }
+.cursor-pointer { cursor: pointer; }
+.hover-bg-white:hover { background-color: #fff !important; }
+.collapse-chevron { transition: transform 0.3s ease; }
+[aria-expanded="true"] .collapse-chevron { transform: rotate(180deg); }
 </style>
 
 <!-- ═══════  HERO  ═══════ -->
@@ -674,13 +690,54 @@ include 'views/header.php';
                     <?php if (empty($groupMembers)): ?>
                         <div class="text-center py-2 text-muted italic small">No active members yet.</div>
                     <?php else: ?>
-                        <?php foreach ($groupMembers as $m): ?>
-                            <div class="p-2 px-3 bg-light rounded-4 mb-2 d-flex justify-content-between align-items-center">
-                                <div class="text-start">
-                                    <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
-                                    <div class="smallest text-muted"><?= e($m['email']) ?></div>
+                        <?php foreach ($groupMembers as $idx => $m): ?>
+                            <?php $collapseId = "memberBorrows_" . $idx; ?>
+                            <div class="bg-light rounded-4 mb-3 border overflow-hidden">
+                                <!-- Member Header (Clickable Toggle) -->
+                                <div class="p-3 d-flex justify-content-between align-items-center cursor-pointer hover-bg-white transition-all" 
+                                     data-bs-toggle="collapse" 
+                                     data-bs-target="#<?= $collapseId ?>" 
+                                     style="cursor: pointer; user-select: none;">
+                                    <div class="text-start d-flex align-items-center gap-3">
+                                        <div class="p-2 bg-white rounded-circle border d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                            <i class="fas fa-user-circle text-muted fs-4"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
+                                            <div class="smallest text-muted"><?= e($m['email']) ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <span class="badge bg-soft-success text-success rounded-pill px-2 smaller">Active</span>
+                                        <i class="fas fa-chevron-down smallest text-muted collapse-chevron transition-all"></i>
+                                    </div>
                                 </div>
-                                <span class="badge bg-soft-success text-success rounded-pill px-2 smaller">Active</span>
+                                
+                                <!-- Collapsible Activities -->
+                                <div class="collapse" id="<?= $collapseId ?>">
+                                    <div class="p-3 pt-0 border-top mt-0">
+                                        <?php if (!empty($m['borrows'])): ?>
+                                            <div class="smallest text-muted fw-800 mb-2 opacity-75 mt-3">READING ACTIVITIES</div>
+                                            <div class="d-flex flex-column gap-2">
+                                                <?php foreach ($m['borrows'] as $b): ?>
+                                                    <div class="d-flex align-items-center gap-3 p-2 bg-white rounded-3 border">
+                                                        <img src="<?= getBookCoverUrl((object)$b, $b['title'], $b['author']) ?>" 
+                                                             style="width:24px;height:36px;object-fit:cover;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.1);"
+                                                             onerror="this.src='<?= getDummyBookCover($b['title'], $b['author'], 50, 75) ?>'">
+                                                        <div class="text-start flex-grow-1 overflow-hidden">
+                                                            <div class="fw-700 text-dark text-truncate" style="font-size: 11px;"><?= e($b['title']) ?></div>
+                                                            <div class="smallest text-muted text-truncate">Due: <?= date('M d, Y', strtotime($b['due_date'])) ?></div>
+                                                        </div>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="py-3 text-center text-muted italic smallest">
+                                                No active borrows yet.
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>

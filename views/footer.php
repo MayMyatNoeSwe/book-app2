@@ -34,22 +34,39 @@ function loadCartCount() {
 // Load on page load
 document.addEventListener('DOMContentLoaded', loadCartCount);
 
-// Add to cart function (global)
-function addToCart(bookId, quantity = 1) {
-    <?php if (!Auth::check()): ?>
+// ─── Login Required Alert (Global) ───
+// ─── Login Required Alert (Global) ───
+function showLoginAlert(message = 'Please login to continue.') {
     Swal.fire({
         icon: 'info',
         title: 'Login Required',
-        text: 'Please login to add items to your cart.',
+        text: message,
         showCancelButton: true,
         confirmButtonText: 'Login Now',
-        confirmButtonColor: '#E07A5F',
-        cancelButtonText: 'Later'
+        cancelButtonText: 'Later',
+        confirmButtonColor: '#d48b71',
+        cancelButtonColor: '#9ca3af',
+        reverseButtons: true,
+        customClass: {
+            title: 'premium-swal-title',
+            htmlContainer: 'premium-swal-text',
+            confirmButton: 'premium-swal-confirm',
+            cancelButton: 'premium-swal-cancel',
+            popup: 'premium-swal-popup'
+        },
+        showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
         }
     });
+}
+
+// Add to cart function (global)
+function addToCart(bookId, quantity = 1) {
+    <?php if (!Auth::check()): ?>
+    showLoginAlert('Please login to add items to your cart.');
     return;
     <?php endif; ?>
 
@@ -100,6 +117,37 @@ function addToCart(bookId, quantity = 1) {
     color: rgba(255,255,255,0.7);
     font-size: 14px;
     overflow: hidden;
+}
+
+/* ─── Premium Swal (Arctic Style) ─── */
+.premium-swal-popup {
+    border-radius: 28px !important;
+    padding: 2.5rem 2rem !important;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.15) !important;
+}
+.premium-swal-title {
+    font-family: 'Playfair Display', serif !important;
+    font-weight: 700 !important;
+    font-size: 2.2rem !important;
+    color: #3D405B !important;
+}
+.premium-swal-text {
+    font-size: 1.1rem !important;
+    color: #636E72 !important;
+    line-height: 1.6 !important;
+    margin-top: 10px !important;
+}
+.premium-swal-confirm {
+    padding: 12px 32px !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+}
+.premium-swal-cancel {
+    padding: 12px 32px !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
 }
 .ft::before {
     content: ''; position: absolute; inset: 0;
