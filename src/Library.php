@@ -229,19 +229,9 @@ class Library
     {
         $rules = $this->getMembershipRules($userId);
         
-        // --- 1. Individual Limit Check ("3 books each") ---
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-        $stmt->execute([$userId, $rules['sub_id']]);
-        if ((int)$stmt->fetchColumn() >= $rules['limit']) {
-            return false;
-        }
-
-        // --- 2. Group-wide Limit Check (Total = Limit * active_members) ---
-        $groupSize = $this->getGroupMemberCount($rules['sub_id']);
-        $totalGroupLimit = $rules['limit'] * $groupSize;
+        // Group-wide Total Limit Check (Shared Pool)
         $totalGroupUsage = $this->getGroupUsageCount($rules['sub_id']);
-        
-        if ($totalGroupUsage >= $totalGroupLimit) {
+        if ($totalGroupUsage >= (int)$rules['limit']) {
             return false;
         }
 

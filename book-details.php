@@ -133,13 +133,11 @@ if (Auth::check()) {
     
     // Fetch membership rules for the active card
     $msRules = $library->getMembershipRules($userId);
-    $individualLimit = $msRules['limit'];
-    $groupSize = $library->getGroupMemberCount($activeSubId);
-    $borrowLimit = $individualLimit * $groupSize; // Total capacity for the whole group
+    $activeSubId = $msRules['sub_id'];
+    $borrowLimit = (int)$msRules['limit'];
     
     $borrowDuration = $msRules['days'];
     $borrowFine = $msRules['fine'];
-    $activeSubId = $msRules['sub_id'];
 
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
     $stmt->execute([$userId]);
