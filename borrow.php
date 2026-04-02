@@ -15,6 +15,8 @@ if (!isLoggedIn()) {
 
 $library = new Library();
 $userId = $_SESSION['user_id'];
+$rules = $library->getMembershipRules($userId);
+$isMember = ($rules['free_borrowing'] ?? false);
 
 // Handle Book Return Action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'return') {
@@ -257,9 +259,16 @@ include 'views/header.php';
                                          <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
                                             <div class="d-flex justify-content-between mb-1">
                                                 <span class="text-muted">Borrow Fee:</span>
-                                                <span class="fw-bold"><?= number_format($b['borrow_price']) ?> Ks</span>
+                                                <span class="fw-bold <?= $isMember ? 'text-decoration-line-through opacity-50' : '' ?>"><?= number_format($b['borrow_price']) ?> Ks</span>
                                             </div>
+                                            <?php if ($isMember): ?>
+                                                <div class="d-flex justify-content-between mb-1 text-success">
+                                                    <span class="smallest fw-700">Member Discount:</span>
+                                                    <span class="fw-bold">- <?= number_format($b['borrow_price']) ?> Ks</span>
+                                                </div>
+                                            <?php endif; ?>
                                             <?php 
+                                            $fee = $isMember ? 0 : (int)$b['borrow_price'];
                                             $p = 0;
                                             if ($isOverdue): 
                                                 $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
@@ -272,8 +281,8 @@ include 'views/header.php';
                                                 </div>
                                             <?php endif; ?>
                                             <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
-                                                <span class="fw-bold">Total:</span>
-                                                <span class="fw-bold"><?= number_format($b['borrow_price'] + $p) ?> Ks</span>
+                                                <span class="fw-bold">Total Payable:</span>
+                                                <span class="fw-bold"><?= number_format($fee + $p) ?> Ks</span>
                                             </div>
                                         </div>
                                     </div>
@@ -283,7 +292,7 @@ include 'views/header.php';
                                         <div class="bw-btn-returned" style="border-style: solid;"><i class="fas fa-clock me-2"></i>Waiting Approval</div>
                                     <?php else: ?>
                                         <button type="button" class="bw-btn-return" 
-                                                onclick="initiateReturn('<?= e($b['book_id']) ?>', '<?= e($b['title']) ?>', <?= $b['borrow_price'] + $p ?>)">
+                                                onclick="initiateReturn('<?= e($b['book_id']) ?>', '<?= e($b['title']) ?>', <?= $fee + $p ?>)">
                                             <i class="fas fa-box"></i> Return Book
                                         </button>
                                     <?php endif; ?>
@@ -467,8 +476,8 @@ include 'views/header.php';
                             <div class="text-primary fw-700 small mb-0">Library Physical Copy</div>
                         </div>
 
-                        <div class="p-4 rounded-4" style="background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;">
-                            <div class="opacity-75 smallest fw-700 text-uppercase mb-1">Total Payable</div>
+                        <div class="p-4 rounded-4" id="modal_total_card" style="background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;">
+                            <div class="opacity-75 smallest fw-700 text-uppercase mb-1" id="modal_total_label">Total Payable</div>
                             <div class="d-flex align-items-baseline gap-2">
                                 <span class="fw-900" style="font-size: 32px;" id="modal_total_amount">0</span>
                                 <span class="fw-700 small">Ks</span>
@@ -477,11 +486,18 @@ include 'views/header.php';
                     </div>
 
                     <div class="mt-4 mt-lg-0">
-                        <div class="alert alert-info border-0 rounded-4 smaller d-flex gap-3 mb-0" style="background: rgba(59, 130, 246, 0.08); color: #1e40af;">
+                        <div id="payment_instructions" class="alert alert-info border-0 rounded-4 smaller d-flex gap-3 mb-0" style="background: rgba(59, 130, 246, 0.08); color: #1e40af;">
                             <i class="fas fa-info-circle mt-1"></i>
                             <div>
                                 <strong class="d-block mb-1">How it works?</strong>
-                                Select a method, scan the QR code to pay, then upload your receipt. Our admin will verify it within 24 hours.
+                                Select a method, scan the QR code to pay, then upload your receipt.
+                            </div>
+                        </div>
+                        <div id="membership_perk_alert" class="alert alert-success border-0 rounded-4 smaller d-flex gap-3 mb-0 d-none" style="background: rgba(16, 185, 129, 0.08); color: #065f46;">
+                            <i class="fas fa-crown mt-1"></i>
+                            <div>
+                                <strong class="d-block mb-1">Membership Advantage</strong>
+                                Your borrow fee is covered by your active membership card.
                             </div>
                         </div>
                     </div>
@@ -497,60 +513,77 @@ include 'views/header.php';
                         <input type="hidden" name="action" value="return">
                         <input type="hidden" name="book_id" id="modal_book_id">
 
-                        <div class="mb-4">
-                            <label class="form-label fw-800 text-dark small text-uppercase mb-3">1. Select Payment Method</label>
-                            <div class="row g-3 justify-content-center">
-                                <div class="col-6">
-                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_yellow" value="KBZPay (Personal)" checked onclick="updateQR('yellow')">
-                                    <label class="pm-card" for="pay_kbz_yellow">
-                                        <div class="pm-icon bg-warning-subtle text-warning">
-                                            <i class="fas fa-user"></i>
-                                        </div>
-                                        <span>WavePay (Yellow)</span>
-                                    </label>
-                                </div>
-                                <div class="col-6">
-                                    <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_blue" value="KBZPay (Merchant)" onclick="updateQR('blue')">
-                                    <label class="pm-card" for="pay_kbz_blue">
-                                        <div class="pm-icon bg-info-subtle text-info">
-                                            <i class="fas fa-university"></i>
-                                        </div>
-                                        <span>KBZPay (Blue)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row g-4 mb-4">
-                            <div class="col-md-6 text-center">
-                                <div class="qr-container h-100">
-                                    <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Scan QR</div>
-                                    <div class="qr-wrapper shadow-sm mx-auto">
-                                        <img id="payment_qr" src="public/img/payments/pay_yellow.jpg" alt="Scan QR" class="img-fluid">
-                                    </div>
-                                    <div class="mt-3 text-center fw-800 smaller text-primary" id="qr_label">May Myat Noe Swe</div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="upload-container h-100">
-                                    <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Upload Receipt</div>
-                                    <div class="upload-box shadow-sm" onclick="document.getElementById('ss_input').click()">
-                                        <input type="file" name="screenshot" id="ss_input" hidden accept="image/*" required onchange="previewScreenshot(this)">
-                                        <div id="ss_preview" class="h-100 d-none">
-                                            <img src="" id="ss_img" class="h-100 w-100 object-fit-cover rounded-3">
-                                        </div>
-                                        <div id="ss_placeholder">
-                                            <div class="upload-circle mb-2">
-                                                <i class="fas fa-camera"></i>
+                        <div id="payment_controls">
+                            <!-- Step 1: Select Payment Method -->
+                            <div class="mb-4">
+                                <label class="form-label fw-800 text-dark small text-uppercase mb-3">1. Select Payment Method</label>
+                                <div class="row g-3 justify-content-center">
+                                    <div class="col-6">
+                                        <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_yellow" value="KBZPay (Personal)" checked onclick="updateQR('yellow')">
+                                        <label class="pm-card" for="pay_kbz_yellow">
+                                            <div class="pm-icon bg-warning-subtle text-warning">
+                                                <i class="fas fa-user"></i>
                                             </div>
-                                            <div style="font-size:10px;" class="fw-700 text-muted">Tap to Upload</div>
+                                            <span>WavePay (Yellow)</span>
+                                        </label>
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="radio" class="btn-check" name="payment_method" id="pay_kbz_blue" value="KBZPay (Merchant)" onclick="updateQR('blue')">
+                                        <label class="pm-card" for="pay_kbz_blue">
+                                            <div class="pm-icon bg-info-subtle text-info">
+                                                <i class="fas fa-university"></i>
+                                            </div>
+                                            <span>KBZPay (Blue)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Payment Verification (QR + Upload) -->
+                            <div class="row g-4 mb-4">
+                                <div class="col-md-6 text-center">
+                                    <div class="qr-container h-100">
+                                        <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Scan QR</div>
+                                        <div class="qr-wrapper shadow-sm mx-auto">
+                                            <img id="payment_qr" src="public/img/payments/pay_yellow.jpg" alt="Scan QR" class="img-fluid">
+                                        </div>
+                                        <div class="mt-3 text-center fw-800 smaller text-primary" id="qr_label">May Myat Noe Swe</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="upload-container h-100">
+                                        <div class="text-muted smallest fw-800 text-uppercase mb-3 text-center">Upload Receipt</div>
+                                        <div class="upload-box shadow-sm" onclick="document.getElementById('ss_input').click()">
+                                            <input type="file" name="screenshot" id="ss_input" hidden accept="image/*" required onchange="previewScreenshot(this)">
+                                            <div id="ss_preview" class="h-100 d-none">
+                                                <img src="" id="ss_img" class="h-100 w-100 object-fit-cover rounded-3">
+                                            </div>
+                                            <div id="ss_placeholder">
+                                                <div class="upload-circle mb-2">
+                                                    <i class="fas fa-camera"></i>
+                                                </div>
+                                                <div style="font-size:10px;" class="fw-700 text-muted">Tap to Upload</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 py-3 rounded-4 fw-900 border-0 shadow-lg" style="background:var(--bookhouse-orange);">
+                        <div id="free_return_view" class="text-center py-4 d-none">
+                            <div class="mb-4">
+                                <img src="public/img/illustrations/book_return.png" class="img-fluid rounded-4 shadow-sm mb-2" style="max-height: 180px; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.05));">
+                            </div>
+                            <h4 class="fw-800 text-dark mb-2">Ready to return?</h4>
+                            <p class="text-muted small px-4 mb-4">Your membership allows you to return this book for free. No payment or receipt is required.</p>
+                            
+                            <div class="p-3 bg-light rounded-4 border dashed mx-4">
+                                <div class="smallest fw-800 text-uppercase text-muted mb-1">Status</div>
+                                <div class="text-success fw-900"><i class="fas fa-check-circle me-1"></i> Balance Verified</div>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="modal_submit_btn" class="btn btn-primary w-100 py-3 rounded-4 fw-900 border-0 shadow-lg" style="background:var(--bookhouse-orange);">
                             Confirm Return & Submit
                         </button>
                     </form>
@@ -561,6 +594,7 @@ include 'views/header.php';
 </div>
 
 <style>
+.dashed { border-style: dashed !important; }
 .pm-card {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 16px 10px; border-radius: 16px; border: 2px solid #f1f5f9; cursor: pointer;
@@ -593,6 +627,37 @@ function initiateReturn(bookId, title, amount) {
     document.getElementById('modal_book_id').value = bookId;
     document.getElementById('modal_book_title').innerText = title;
     document.getElementById('modal_total_amount').innerText = amount.toLocaleString();
+    
+    // Toggle views based on amount
+    const paymentControls = document.getElementById('payment_controls');
+    const freeReturnView = document.getElementById('free_return_view');
+    const screenshotInput = document.getElementById('ss_input');
+    const paymentInstructions = document.getElementById('payment_instructions');
+    const membershipPerkAlert = document.getElementById('membership_perk_alert');
+    const totalCard = document.getElementById('modal_total_card');
+    const totalLabel = document.getElementById('modal_total_label');
+    const submitBtn = document.getElementById('modal_submit_btn');
+    
+    if (amount === 0) {
+        paymentControls.classList.add('d-none');
+        freeReturnView.classList.remove('d-none');
+        screenshotInput.required = false;
+        screenshotInput.value = ''; 
+        paymentInstructions.classList.add('d-none');
+        membershipPerkAlert.classList.remove('d-none');
+        totalCard.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+        totalLabel.innerText = "Membership Balance";
+        submitBtn.style.background = '#10b981';
+    } else {
+        paymentControls.classList.remove('d-none');
+        freeReturnView.classList.add('d-none');
+        screenshotInput.required = true;
+        paymentInstructions.classList.remove('d-none');
+        membershipPerkAlert.classList.add('d-none');
+        totalCard.style.background = 'linear-gradient(135deg, #4f46e5, #6366f1)';
+        totalLabel.innerText = "Total Payable";
+        submitBtn.style.background = 'var(--bookhouse-orange)';
+    }
     
     const myModal = new bootstrap.Modal(document.getElementById('paymentModal'));
     myModal.show();

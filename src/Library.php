@@ -187,7 +187,8 @@ class Library
             'limit' => $limit,
             'days'  => $days,
             'fine'  => $fine,
-            'sub_id' => $activeSubId
+            'sub_id' => $activeSubId,
+            'free_borrowing' => ($tier !== 'bronze')
         ];
     }
 
@@ -273,8 +274,11 @@ class Library
         $stmt->execute([$dueDate, $borrowId]);
         $this->updateBook($book);
 
-        // Record transaction
-        $this->addTransaction('income', 'borrow_fee', $book->getBorrowPrice(), "Borrow: {$book->getTitle()} by user #{$record['user_id']}", $borrowId, 'borrowing_history', $record['user_id']);
+        // Record transaction if not a subscription borrow
+        $fee = (empty($record['subscription_id'])) ? $book->getBorrowPrice() : 0;
+        if ($fee > 0) {
+            $this->addTransaction('income', 'borrow_fee', $fee, "Borrow: {$book->getTitle()} by user #{$record['user_id']}", $borrowId, 'borrowing_history', $record['user_id']);
+        }
 
         return true;
     }
@@ -298,7 +302,8 @@ class Library
         $book = $this->getBookById($record['book_id']);
         if (!$book) return false;
 
-        $penalty = $this->calculatePenalty($record['due_date']);
+        $rules = $this->getMembershipRules($record['user_id']);
+        $penalty = $this->calculatePenalty($record['due_date'], $rules['fine']);
         $sql = "UPDATE borrowing_history 
                 SET `status` = 'returned', 
                     returned_at = NOW(), 
@@ -319,14 +324,14 @@ class Library
         return true;
     }
 
-    // Calculate penalty fee (500 Ks per day overdue)
-    public function calculatePenalty(string $dueDate): int
+    // Calculate penalty fee
+    public function calculatePenalty(string $dueDate, int $finePerDay = 500): int
     {
         $due = strtotime($dueDate);
         $now = time();
         if ($due >= $now) return 0;
         $overdueDays = (int)floor(($now - $due) / 86400);
-        return $overdueDays * 500;
+        return $overdueDays * $finePerDay;
     }
 
     // Mark penalty as paid

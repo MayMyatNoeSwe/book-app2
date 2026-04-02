@@ -27,10 +27,21 @@ $user = $stmt->fetch();
 $activeSubs = Auth::getSubscriptions();
 $tier = strtolower($user['membership_tier'] ?? 'bronze');
 
-// Fetch statistics
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
 $stmt->execute([$userId]);
 $totalBorrows = $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NOT NULL");
+$stmt->execute([$userId]);
+$totalReturns = $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT SUM(penalty_fee) FROM borrowing_history WHERE user_id = ?");
+$stmt->execute([$userId]);
+$totalPenaltyAmount = $stmt->fetchColumn() ?: 0;
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND penalty_fee > 0 AND penalty_paid = 0");
+$stmt->execute([$userId]);
+$unpaidPenaltyCount = $stmt->fetchColumn();
 
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
 $stmt->execute([$userId]);
@@ -114,7 +125,13 @@ if (!empty($possibleHostSubs)) {
     
     $groupMembers = $lib->getGroupMembers($hostSubId);
     foreach ($groupMembers as &$m) {
+        // Fetch stats for members
         $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active', (int)$m['sub_id']);
+        $m['history'] = $lib->getUserBorrows($m['user_id'], 'past', (int)$m['sub_id']);
+        
+        $stmt = $pdo->prepare("SELECT COUNT(*) as total_b, COUNT(returned_at) as total_r, SUM(penalty_fee) as total_p FROM borrowing_history WHERE user_id = ? AND subscription_id = ?");
+        $stmt->execute([$m['user_id'], $m['sub_id']]);
+        $m['stats'] = $stmt->fetch();
     }
     unset($m);
 }
@@ -348,12 +365,6 @@ include 'views/header.php';
                         <div class="ud-badge">
                             <i class="fas fa-shield-alt"></i> <?= strtoupper($user['role'] ?? 'USER') ?>
                         </div>
-                        
-                        <?php if ($isHost): ?>
-                            <button class="btn btn-sm btn-outline-primary rounded-pill px-3 ms-2 fw-800" data-bs-toggle="modal" data-bs-target="#manageSharingModal">
-                                <i class="fas fa-users me-1"></i> Manage Family Shares
-                            </button>
-                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -415,36 +426,210 @@ include 'views/header.php';
 <!-- ═══════  STATS  ═══════ -->
 <div class="container ud-stats-container">
     <div class="row g-3 g-lg-4">
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
             <div class="ud-stat-card">
                 <div class="ud-stat-icon orange"><i class="fas fa-book-open"></i></div>
-                <div class="ud-stat-num"><?= number_format($totalBorrows) ?></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalBorrows) ?></div>
                 <div class="ud-stat-lbl">Borrows</div>
             </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
             <div class="ud-stat-card">
-                <div class="ud-stat-icon mint"><i class="fas fa-shopping-bag"></i></div>
-                <div class="ud-stat-num"><?= number_format($totalOrders) ?></div>
+                <div class="ud-stat-icon mint"><i class="fas fa-undo"></i></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReturns) ?></div>
+                <div class="ud-stat-lbl">Returns</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="ud-stat-card">
+                <div class="ud-stat-icon orange"><i class="fas fa-shopping-bag"></i></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalOrders) ?></div>
                 <div class="ud-stat-lbl">Orders</div>
             </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
             <div class="ud-stat-card">
-                <div class="ud-stat-icon blue"><i class="fas fa-bookmark"></i></div>
-                <div class="ud-stat-num"><?= number_format($totalReservations) ?></div>
-                <div class="ud-stat-lbl">Reservations</div>
+                <div class="ud-stat-icon gold"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalPenaltyAmount) ?></div>
+                <div class="ud-stat-lbl">Penalties (Ks)</div>
             </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
             <div class="ud-stat-card">
-                <div class="ud-stat-icon gold"><i class="fas fa-star"></i></div>
-                <div class="ud-stat-num"><?= number_format($totalReviews) ?></div>
+                <div class="ud-stat-icon blue"><i class="fas fa-bookmark"></i></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReservations) ?></div>
+                <div class="ud-stat-lbl">Resrv.</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="ud-stat-card">
+                <div class="ud-stat-icon orange"><i class="fas fa-star"></i></div>
+                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReviews) ?></div>
                 <div class="ud-stat-lbl">Reviews</div>
             </div>
         </div>
     </div>
 </div>
+
+<?php if ($isHost): ?>
+<!-- ═══════  FAMILY GROUP DASHBOARD  ═══════ -->
+<section class="mb-5 animate__animated animate__fadeIn">
+    <div class="container">
+        <h3 class="ud-section-title"><i class="fas fa-users"></i> Family Group Dashboard</h3>
+        <div class="ud-card border-0 shadow-sm overflow-hidden p-0" id="family_sharing_dashboard" style="background: rgba(255,255,255,0.4); backdrop-filter: blur(20px);">
+            <div class="row g-0">
+                <!-- Share Member Management -->
+                <div class="col-lg-5 border-end p-4 p-xl-5 bg-white">
+                    <div class="mb-4">
+                        <h5 class="fw-800 mb-1">Manage Members</h5>
+                        <p class="text-muted smaller">Add or review your shared account activities. (<?= count($groupMembers) ?>/5 Slots Filled)</p>
+                    </div>
+
+                    <!-- Invite Form View -->
+                    <form action="api/membership_invitations.php" method="POST" class="mb-5">
+                        <input type="hidden" name="action" value="send">
+                        <input type="hidden" name="sub_id" value="<?= $hostSubId ?>">
+                        <div class="p-3 rounded-4 border bg-light d-flex gap-2">
+                           <input type="email" name="email" class="form-control border-0 bg-transparent shadow-none" placeholder="Enter family email..." required>
+                           <button type="submit" class="btn btn-dark rounded-pill px-4 fw-800 smaller">Invite</button>
+                        </div>
+                    </form>
+
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <h6 class="smallest text-uppercase fw-800 text-muted opacity-75 letter-spacing-1">Group Members</h6>
+                    </div>
+
+                    <?php if (empty($groupMembers)): ?>
+                        <div class="ud-empty py-5 border dashed rounded-4">
+                            <i class="fas fa-user-plus d-block mb-3 opacity-50"></i>
+                            <h6 class="fw-800">No members yet</h6>
+                            <p class="small text-muted">Invite someone to start sharing benefits.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($groupMembers as $idx => $m): ?>
+                            <?php $collapseId = "page_memberBorrows_" . $idx; ?>
+                            <div class="bg-light rounded-4 mb-3 border overflow-hidden">
+                                <div class="p-3 d-flex justify-content-between align-items-center cursor-pointer hover-bg-white transition-all shadow-hover" 
+                                     data-bs-toggle="collapse" 
+                                     data-bs-target="#<?= $collapseId ?>" 
+                                     style="cursor: pointer; user-select: none;">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="p-2 bg-white rounded-circle border d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px;">
+                                            <i class="fas fa-user-circle text-muted fs-4"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
+                                            <div class="smallest text-muted d-flex gap-2 align-items-center">
+                                                <span><?= e($m['email']) ?></span>
+                                                <span class="text-success fw-900">• Active</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <i class="fas fa-chevron-down smallest text-muted collapse-chevron"></i>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+
+                    <!-- Sent Invites (Small) -->
+                    <?php if (!empty($sentInvites)): ?>
+                        <div class="mt-5">
+                            <h6 class="smallest text-uppercase fw-800 text-muted opacity-75 mb-3">Pending Invites</h6>
+                            <div class="d-flex flex-column gap-2">
+                                <?php foreach ($sentInvites as $si): ?>
+                                    <div class="p-2 px-3 bg-light border rounded-pill d-flex justify-content-between align-items-center">
+                                        <span class="smallest fw-800 text-dark"><?= e($si['email']) ?></span>
+                                        <span class="smallest text-muted italic">Sent <?= date('M d', strtotime($si['created_at'])) ?></span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Live Feed / Activity Viewer -->
+                <div class="col-lg-7 p-4 p-xl-5" style="background: rgba(248, 250, 252, 0.5);">
+                    <div class="mb-4">
+                        <h5 class="fw-800 mb-1">Group Activity Logs</h5>
+                        <p class="text-muted smaller">Expand members to see their detailed browsing and reading history.</p>
+                    </div>
+
+                    <?php if (empty($groupMembers)): ?>
+                        <div class="h-100 d-flex flex-column align-items-center justify-content-center py-5 opacity-25">
+                            <i class="fas fa-stream fs-1 mb-3"></i>
+                            <p class="fw-800">Logs will appear here</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($groupMembers as $idx => $m): ?>
+                            <?php $collapseId = "page_memberBorrows_" . $idx; ?>
+                            <div class="collapse <?= $idx === 0 ? 'show' : '' ?> member-act-log" id="<?= $collapseId ?>" data-bs-parent="#family_sharing_dashboard">
+                                <div class="member-header-context d-flex align-items-center gap-3 mb-4 p-3 bg-white border rounded-4 shadow-sm">
+                                    <div class="p-2 bg-orange text-white rounded-3 shadow-orange" style="width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
+                                       <i class="fas fa-user-check"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 fw-900"><?= e($m['username']) ?>'s Timeline</h6>
+                                        <span class="smallest text-muted fw-700">Member ID: <?= e($m['membership_id'] ?? 'N/A') ?></span>
+                                    </div>
+                                    <div class="ms-auto d-flex gap-2">
+                                        <div class="p-2 border rounded-3 bg-light text-center" style="min-width: 60px;">
+                                            <div class="smallest fw-800 text-opacity-50">BORROWS</div>
+                                            <div class="fw-900 small"><?= $m['stats']['total_b'] ?></div>
+                                        </div>
+                                        <div class="p-2 border rounded-3 bg-light text-center" style="min-width: 60px;">
+                                            <div class="smallest fw-800 text-opacity-50">FINES</div>
+                                            <div class="fw-900 small text-danger"><?= number_format($m['stats']['total_p'] ?? 0) ?></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="activities-scroll-box" style="display: flex; flex-direction: column; gap: 12px;">
+                                    <?php 
+                                    $allActivities = array_merge(
+                                        array_map(function($i){ $i['act_type'] = 'active'; return $i; }, $m['borrows']),
+                                        array_map(function($i){ $i['act_type'] = 'past'; return $i; }, $m['history'])
+                                    );
+                                    usort($allActivities, function($a, $b){ return strtotime($b['borrowed_at']) - strtotime($a['borrowed_at']); });
+                                    
+                                    if (!empty($allActivities)): 
+                                        foreach (array_slice($allActivities, 0, 10) as $b): ?>
+                                            <div class="p-3 bg-white rounded-4 border d-flex align-items-center gap-3 hover-shadow-sm transition-all">
+                                                <img src="<?= getBookCoverUrl((object)$b, $b['title'], $b['author']) ?>" 
+                                                     class="rounded-3 shadow-sm" style="width:40px; height:60px; object-fit:cover;"
+                                                     onerror="this.src='<?= getDummyBookCover($b['title'], $b['author'], 80, 120) ?>'">
+                                                <div class="flex-grow-1 overflow-hidden">
+                                                    <div class="fw-800 text-dark text-truncate mb-1"><?= e($b['title']) ?></div>
+                                                    <div class="smallest d-flex align-items-center gap-2">
+                                                        <?php if($b['act_type'] == 'active'): ?>
+                                                            <span class="badge bg-soft-primary text-primary rounded-pill smaller fw-900"><i class="fas fa-clock fs-10 me-1"></i> READING</span>
+                                                            <span class="text-muted fw-700">Due: <?= date('M d', strtotime($b['due_date'])) ?></span>
+                                                        <?php else: ?>
+                                                            <span class="badge bg-soft-success text-success rounded-pill smaller fw-900"><i class="fas fa-check-double fs-10 me-1"></i> RETURNED</span>
+                                                            <span class="text-muted fw-700"><?= date('M d, Y', strtotime($b['returned_at'])) ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                                <?php if(($b['penalty_fee'] ?? 0) > 0): ?>
+                                                    <div class="text-end">
+                                                        <div class="smallest fw-900 text-danger"><?= number_format($b['penalty_fee']) ?> Ks</div>
+                                                        <div class="smallest text-muted opacity-50" style="font-size:8px;">FINE</div>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div class="text-center py-5 text-muted italic small opacity-50">No activity logged for this member.</div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<?php endif; ?>
 
 <?php if (!empty($pendingInvitesForMe)): ?>
 <section class="mb-5 animate__animated animate__fadeIn">
@@ -577,7 +762,7 @@ include 'views/header.php';
 
                 <!-- Recent Reviews -->
                 <h3 class="ud-section-title"><i class="fas fa-star"></i> Recent Reviews</h3>
-                <div class="ud-card">
+                <div class="ud-card mb-4">
                     <?php if (empty($reviews)): ?>
                         <div class="ud-empty">
                             <i class="fas fa-comment-dots"></i>
@@ -604,6 +789,40 @@ include 'views/header.php';
                                 <?= date('M j, Y', strtotime($rev['created_at'])) ?>
                             </div>
                         </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Penalties Section -->
+                <h3 class="ud-section-title"><i class="fas fa-exclamation-circle"></i> Penalties & Fines</h3>
+                <div class="ud-card">
+                    <?php 
+                    $stmt = $pdo->prepare("SELECT bh.*, b.title FROM borrowing_history bh JOIN books b ON bh.book_id = b.id WHERE bh.user_id = ? AND bh.penalty_fee > 0 ORDER BY bh.borrowed_at DESC LIMIT 5");
+                    $stmt->execute([$userId]);
+                    $penalties = $stmt->fetchAll();
+                    
+                    if (empty($penalties)): ?>
+                        <div class="ud-empty">
+                            <i class="fas fa-check-circle"></i>
+                            <h6>No penalties</h6>
+                            <p>Your library record is perfectly clean.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($penalties as $p): ?>
+                            <div class="ud-list-item">
+                                <div class="ud-item-info">
+                                    <div class="ud-item-title"><?= e($p['title']) ?></div>
+                                    <div class="ud-item-meta">Amount: <span class="text-danger fw-bold"><?= number_format($p['penalty_fee']) ?> Ks</span></div>
+                                </div>
+                                <div class="text-end">
+                                    <?php if ($p['penalty_paid']): ?>
+                                        <span class="ud-status returned">Paid</span>
+                                    <?php else: ?>
+                                        <span class="ud-status cancelled">Unpaid</span>
+                                        <div class="mt-1"><a href="borrow.php" class="smallest text-primary fw-bold text-decoration-none">How to Pay?</a></div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
@@ -660,113 +879,5 @@ include 'views/header.php';
     </div>
 </section>
 
-<?php if ($isHost): ?>
-<!-- Manage Sharing Modal -->
-<div class="modal fade" id="manageSharingModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content rounded-5 border-0 shadow-lg">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-800 text-capitalize"><i class="fas fa-users-cog me-2 text-primary"></i><?= e($hostSubTier ?? '') ?> Family Sharing</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-4">
-                <p class="small text-muted mb-4 text-start">Share your premium benefits with up to 5 family members. Simply enter their email address to invite them.</p>
-                
-                <!-- Invite Form -->
-                <form action="api/membership_invitations.php" method="POST" class="mb-4">
-                    <input type="hidden" name="action" value="send">
-                    <input type="hidden" name="sub_id" value="<?= $hostSubId ?>">
-                    <div class="input-group">
-                        <input type="email" name="email" class="form-control rounded-start-pill border-light-subtle px-3" placeholder="Enter member email" required>
-                        <button class="btn btn-primary rounded-end-pill px-4 fw-bold" type="submit">Invite</button>
-                    </div>
-                </form>
-
-                <hr class="opacity-10 mb-4">
-
-                <!-- Current Members -->
-                <div class="mb-4">
-                    <h6 class="smallest text-uppercase fw-800 text-muted mb-3 text-start">Group Members (<?= count($groupMembers) ?>/5)</h6>
-                    <?php if (empty($groupMembers)): ?>
-                        <div class="text-center py-2 text-muted italic small">No active members yet.</div>
-                    <?php else: ?>
-                        <?php foreach ($groupMembers as $idx => $m): ?>
-                            <?php $collapseId = "memberBorrows_" . $idx; ?>
-                            <div class="bg-light rounded-4 mb-3 border overflow-hidden">
-                                <!-- Member Header (Clickable Toggle) -->
-                                <div class="p-3 d-flex justify-content-between align-items-center cursor-pointer hover-bg-white transition-all" 
-                                     data-bs-toggle="collapse" 
-                                     data-bs-target="#<?= $collapseId ?>" 
-                                     style="cursor: pointer; user-select: none;">
-                                    <div class="text-start d-flex align-items-center gap-3">
-                                        <div class="p-2 bg-white rounded-circle border d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                            <i class="fas fa-user-circle text-muted fs-4"></i>
-                                        </div>
-                                        <div>
-                                            <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
-                                            <div class="smallest text-muted"><?= e($m['email']) ?></div>
-                                        </div>
-                                    </div>
-                                    <div class="d-flex align-items-center gap-3">
-                                        <span class="badge bg-soft-success text-success rounded-pill px-2 smaller">Active</span>
-                                        <i class="fas fa-chevron-down smallest text-muted collapse-chevron transition-all"></i>
-                                    </div>
-                                </div>
-                                
-                                <!-- Collapsible Activities -->
-                                <div class="collapse" id="<?= $collapseId ?>">
-                                    <div class="p-3 pt-0 border-top mt-0">
-                                        <?php if (!empty($m['borrows'])): ?>
-                                            <div class="smallest text-muted fw-800 mb-2 opacity-75 mt-3">READING ACTIVITIES</div>
-                                            <div class="d-flex flex-column gap-2">
-                                                <?php foreach ($m['borrows'] as $b): ?>
-                                                    <div class="d-flex align-items-center gap-3 p-2 bg-white rounded-3 border">
-                                                        <img src="<?= getBookCoverUrl((object)$b, $b['title'], $b['author']) ?>" 
-                                                             style="width:24px;height:36px;object-fit:cover;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.1);"
-                                                             onerror="this.src='<?= getDummyBookCover($b['title'], $b['author'], 50, 75) ?>'">
-                                                        <div class="text-start flex-grow-1 overflow-hidden">
-                                                            <div class="fw-700 text-dark text-truncate" style="font-size: 11px;"><?= e($b['title']) ?></div>
-                                                            <div class="smallest text-muted text-truncate">Due: <?= date('M d, Y', strtotime($b['due_date'])) ?></div>
-                                                        </div>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php else: ?>
-                                            <div class="py-3 text-center text-muted italic smallest">
-                                                No active borrows yet.
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Pending Invites -->
-                <div>
-                    <h6 class="smallest text-uppercase fw-800 text-muted mb-3 text-start">Pending Invitations</h6>
-                    <?php if (empty($sentInvites)): ?>
-                        <div class="text-center py-2 text-muted italic small">No pending invites.</div>
-                    <?php else: ?>
-                        <?php foreach ($sentInvites as $si): ?>
-                            <div class="p-2 px-3 border rounded-4 mb-2 d-flex justify-content-between align-items-center opacity-75">
-                                <div class="text-start">
-                                    <div class="fw-800 small text-dark"><?= e($si['email']) ?></div>
-                                    <div class="smallest text-muted">Sent: <?= date('M d', strtotime($si['created_at'])) ?></div>
-                                </div>
-                                <span class="badge bg-light text-muted rounded-pill px-2 smaller border">Pending</span>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
 
 <?php include 'views/footer.php'; ?>

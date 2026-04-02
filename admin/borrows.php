@@ -80,6 +80,10 @@ foreach ($records as &$r) {
         $finePerDay = (int)getSetting('fine_per_day', 500);
         $r['calculated_penalty'] = $r['overdue_days'] * $finePerDay;
     }
+    
+    // Effective borrow fee logic: If they have a subscription, borrow fee is 0
+    // subscription_id is NULL for Bronze (pay-per-borrow) users
+    $r['effective_borrow_price'] = (!empty($r['subscription_id'])) ? 0 : (int)$r['borrow_price'];
 }
 unset($r);
 
@@ -332,9 +336,13 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                             </td>
                              <td class="px-4">
                                 <div class="fee-breakdown">
-                                    <div class="d-flex justify-content-between mb-1">
+                                     <div class="d-flex justify-content-between mb-1">
                                         <span class="text-muted smallest fw-700">Borrow:</span>
-                                        <span class="fw-800 text-dark smaller"><?= number_format($r['borrow_price']) ?> Ks</span>
+                                        <?php if ($r['effective_borrow_price'] == 0 && $r['borrow_price'] > 0): ?>
+                                             <span class="fw-800 text-success smaller">0 Ks <span class="text-muted opacity-50 text-decoration-line-through smaller fw-normal ms-1"><?= number_format($r['borrow_price']) ?></span></span>
+                                        <?php else: ?>
+                                             <span class="fw-800 text-dark smaller"><?= number_format($r['effective_borrow_price']) ?> Ks</span>
+                                        <?php endif; ?>
                                     </div>
                                     <?php 
                                     $penalty = max($r['calculated_penalty'], $r['penalty_fee'] ?? 0);
@@ -347,7 +355,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                     <?php endif; ?>
                                     <div class="border-top pt-1 mt-1 d-flex justify-content-between">
                                         <span class="text-dark smallest fw-800">Total:</span>
-                                        <span class="fw-900 text-primary smaller"><?= number_format($r['borrow_price'] + $penalty) ?> Ks</span>
+                                        <span class="fw-900 text-primary smaller"><?= number_format($r['effective_borrow_price'] + $penalty) ?> Ks</span>
                                     </div>
                                     <?php if ($penalty > 0 && ($r['penalty_paid'] ?? 0)): ?>
                                         <div class="text-success smallest fw-800 mt-1"><i class="fas fa-check-circle me-1"></i>Penalty Paid</div>
