@@ -1547,6 +1547,27 @@ class Library
 
     // ======================== Accounting Management ========================
 
+    public function removeSubscription(int $userId, int $subscriptionId): bool
+    {
+        // 1. Verify this card belongs to user
+        $stmt = $this->pdo->prepare("SELECT id FROM user_subscriptions WHERE id = ? AND user_id = ?");
+        $stmt->execute([$subscriptionId, $userId]);
+        if (!$stmt->fetch()) return false;
+
+        // 2. Clear from users table if it's the active one
+        $stmt = $this->pdo->prepare("UPDATE users SET active_subscription_id = NULL WHERE id = ? AND active_subscription_id = ?");
+        $stmt->execute([$userId, $subscriptionId]);
+
+        // 3. Delete the subscription
+        $stmt = $this->pdo->prepare("DELETE FROM user_subscriptions WHERE id = ?");
+        $res = $stmt->execute([$subscriptionId]);
+
+        if ($res) {
+            $this->syncUserProfileTier($userId);
+        }
+        return $res;
+    }
+
     public function setActiveCard(int $userId, int $subscriptionId): bool
     {
         // Verify this card belongs to user and is NOT expired (linked or independent)

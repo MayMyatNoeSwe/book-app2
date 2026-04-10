@@ -34,6 +34,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_code'])) {
     exit;
 }
 
+// REMOVE CARD HANDLER
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_card'])) {
+    $cardId = (int)$_POST['card_id'];
+    $lib = new \App\Library($pdo);
+    if ($lib->removeSubscription($userId, $cardId)) {
+        $_SESSION['flash_message'] = ['text' => "SUCCESS! Member Card #$cardId has been removed.", 'type' => 'success'];
+    } else {
+        $_SESSION['flash_message'] = ['text' => "Failed to remove card.", 'type' => 'danger'];
+    }
+    header("Location: membership.php");
+    exit;
+}
+
 // SET ACTIVE CARD HANDLER
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['set_active_card'])) {
     $cardId = (int)$_POST['card_id'];
@@ -101,6 +114,7 @@ $tiers = [
             'Borrow Limit: ' . getSetting('silver_borrow_limit', 10) . ' Books',
             'Duration: ' . getSetting('silver_borrow_duration', 14) . ' Days',
             'Shopping: ' . getSetting('silver_discount', '10% Discount'),
+            'Family Sharing: ' . getSetting('silver_share_limit', 0) . ' Members',
             'Support: ' . getSetting('silver_support', 'Standard')
         ]
     ],
@@ -113,6 +127,7 @@ $tiers = [
             'Borrow Limit: ' . getSetting('gold_borrow_limit', 50) . ' Books',
             'Duration: ' . getSetting('gold_borrow_duration', 30) . ' Days',
             'Shopping: ' . getSetting('gold_discount', '20% Discount'),
+            'Family Sharing: ' . getSetting('gold_share_limit', 5) . ' Members',
             'Support: ' . getSetting('gold_support', 'Standard')
         ]
     ],
@@ -125,6 +140,7 @@ $tiers = [
             'Borrow Limit: ' . getSetting('platinum_borrow_limit', 100) . ' Books',
             'Duration: ' . getSetting('platinum_borrow_duration', 60) . ' Days',
             'Shopping: ' . getSetting('platinum_discount', '25% Disc + Free Ship'),
+            'Family Sharing: ' . getSetting('platinum_share_limit', 10) . ' Members',
             'Support: ' . getSetting('platinum_support', 'Priority')
         ]
     ]
@@ -295,23 +311,16 @@ include 'views/header.php';
                 <div class="tier-icon" style="background: <?= $tier['gradient'] ?>"><i class="fas fa-crown"></i></div>
                 <h3 class="tier-name"><?= $tier['name'] ?></h3>
                 
-                <?php if ($parentId): ?>
-                    <div class="badge bg-soft-info text-info rounded-pill px-3 mb-2 small w-fit">
-                        <i class="fas fa-users me-1"></i> Family Member
-                    </div>
-                <?php elseif ($isHost && in_array($key, ['gold', 'platinum'])): ?>
+                <?php if ($isHost && in_array($key, ['gold', 'platinum'])): ?>
                     <div class="badge bg-soft-warning text-warning rounded-pill px-3 mb-2 small w-fit">
                         <i class="fas fa-crown me-1"></i> Group Host
                     </div>
                 <?php endif; ?>
 
-                <div class="small text-muted mb-2">Card #<?= $card['id'] ?> | Exp: <?= date('M d, Y', strtotime($card['expires_at'])) ?></div>
-                <?php if ($parentId): ?>
-                    <div class="p-2 px-3 bg-light rounded-4 mb-3 text-start mb-auto">
-                        <span class="smallest text-uppercase fw-800 text-muted d-block">Shared By</span>
-                        <span class="fw-800 text-dark"><?= htmlspecialchars($card['host_name'] ?? 'The Host') ?></span>
-                    </div>
-                <?php endif; ?>
+                
+                <button class="btn btn-sm text-danger position-absolute top-0 end-0 m-3" onclick="removeCard(<?= $card['id'] ?>)" title="Remove Card">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
 
                 <div class="tier-price"><?= number_format($tier['price']) ?> <span>Ks/mo</span></div>
                 <ul class="benefit-list">
@@ -323,8 +332,11 @@ include 'views/header.php';
                     <?php if (!$isPrimary): ?>
                          <button class="btn btn-tier btn-tier-success w-100" onclick="setActiveCard(<?= $card['id'] ?>)">Select as Active Card</button>
                     <?php endif; ?>
-                    <?php if (!$parentId): ?>
-                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Again / Renew</button>
+                    
+                    <?php if ($parentId): ?>
+                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
+                    <?php else: ?>
+                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -348,7 +360,7 @@ include 'views/header.php';
                         <li class="benefit-item"><i class="fas fa-check-circle opacity-50"></i><?= $b ?></li>
                     <?php endforeach; ?>
                 </ul>
-                <button class="btn btn-tier btn-tier-primary w-100 mt-auto" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Join Now</button>
+                <button class="btn btn-tier btn-tier-primary w-100 mt-auto" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
             </div>
         </div>
         <?php endforeach; ?>
@@ -365,6 +377,30 @@ function setActiveCard(cardId) {
     `;
     document.body.appendChild(form);
     form.submit();
+}
+
+function removeCard(cardId) {
+    Swal.fire({
+        title: 'Remove this card?',
+        text: "You will lose access to the benefits of this membership tier.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, remove it!',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `
+                <input type="hidden" name="remove_card" value="1">
+                <input type="hidden" name="card_id" value="${cardId}">
+            `;
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
 }
 
 function upgradeTier(tierKey, tierName, price) {

@@ -98,7 +98,17 @@ $reviews = $stmt->fetchAll();
 
 // --- SHARING LOGIC ---
 $lib = new \App\Library($pdo);
-// 1. Identify WHICH sub to manage in "Manage Family Shares"
+
+// Initialize Group Stats with defaults (Supports both standalone and group members)
+$rules = $lib->getMembershipRules($userId);
+$planLimit = $rules['limit'] ?? 0;
+$shareLimit = $rules['share_limit'] ?? 5;
+$singleLimit = $rules['single_limit'] ?? 3;
+$groupAggregate = [
+    'active' => $user['active_subscription_id'] ? $lib->getGroupUsageCount($user['active_subscription_id']) : $myBorrows
+];
+
+// 1. Identify WHICH sub to manage in "Manage Family Shares" (Host Dashboard)
 $activeSubId = $user['active_subscription_id'] ?? 0;
 $possibleHostSubs = [];
 
@@ -111,10 +121,8 @@ foreach ($activeSubs as $sub) {
 // SORT by tier priority (Platinum > Gold > Silver)
 $pri = ['platinum' => 3, 'gold' => 2, 'silver' => 1];
 usort($possibleHostSubs, function($a, $b) use ($pri, $activeSubId) {
-    // ACTIVE SUB ALWAYS FIRST
     if ($a['id'] == $activeSubId) return -1;
     if ($b['id'] == $activeSubId) return 1;
-    // Then by tier rank
     return ($pri[$b['tier']] ?? 0) <=> ($pri[$a['tier']] ?? 0);
 });
 
@@ -128,15 +136,13 @@ if (!empty($possibleHostSubs)) {
     $hostSubId = $possibleHostSubs[0]['id'];
     $hostSubTier = $possibleHostSubs[0]['tier'];
     
-    // Centralized Group Aggregates - Bound to active family plan
+    // Override with host-specific group aggregates
     $totalBorrows = $lib->getGroupTotalBorrowsCount($hostSubId);
     $totalReturns = $lib->getGroupTotalReturnsCount($hostSubId);
     $totalPenaltyAmount = $lib->getGroupTotalPenaltyAmount($hostSubId);
     
-    // UI components rely on this for the current books at home count
-    $groupAggregate = [
-        'active' => $lib->getGroupUsageCount($hostSubId)
-    ];
+    $groupAggregate['active'] = $lib->getGroupUsageCount($hostSubId);
+    $groupMembers = $lib->getGroupMembers($hostSubId);
 
     foreach ($groupMembers as &$m) {
         $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active'); 
@@ -147,11 +153,6 @@ if (!empty($possibleHostSubs)) {
         $m['stats'] = $stmt->fetch();
     }
     unset($m);
-    
-    $rules = $lib->getMembershipRules($userId);
-    $planLimit = $rules['limit'] ?? 0;
-    $shareLimit = $rules['share_limit'] ?? 5;
-    $singleLimit = $rules['single_limit'] ?? 3;
 }
 
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
