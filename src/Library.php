@@ -150,6 +150,7 @@ class Library
     {
         $stmt = $this->pdo->prepare("
             SELECT us.tier, u.active_subscription_id, us.parent_id, us.expires_at, 
+                   us.custom_borrow_limit,
                    parent.expires_at as parent_expires_at,
                    host.membership_tier as host_primary_tier
             FROM users u
@@ -178,7 +179,9 @@ class Library
         $activeSubId = $row['active_subscription_id'] ?? null;
 
         // Fetch dynamic rules from settings using global getSetting helper
-        $limit = (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
+        $limit = ($row && $row['custom_borrow_limit'] !== null) 
+                 ? (int)$row['custom_borrow_limit'] 
+                 : (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
         $days = (int)getSetting($tier . '_borrow_duration', getSetting('borrow_duration', 14));
         $fine = (int)getSetting($tier . '_fine_per_day', getSetting('fine_per_day', 500));
 
@@ -190,7 +193,8 @@ class Library
             'share_limit' => (int)getSetting($tier . '_share_limit', 5),
             'single_limit' => (int)getSetting($tier . '_single_limit', 3),
             'sub_id' => $activeSubId,
-            'free_borrowing' => ($tier !== 'bronze')
+            'free_borrowing' => ($tier !== 'bronze'),
+            'is_custom' => ($row && $row['custom_borrow_limit'] !== null)
         ];
     }
 
@@ -931,7 +935,7 @@ class Library
     public function getGroupMembers(int $subId): array
     {
         $stmt = $this->pdo->prepare("
-            SELECT u.username, u.email, u.id as user_id, us.id as sub_id, us.created_at as joined_at 
+            SELECT u.username, u.email, u.id as user_id, us.id as sub_id, us.created_at as joined_at, us.custom_borrow_limit 
             FROM user_subscriptions us
             JOIN users u ON us.user_id = u.id
             WHERE us.parent_id = ? AND (us.expires_at > NOW() OR us.expires_at IS NULL)

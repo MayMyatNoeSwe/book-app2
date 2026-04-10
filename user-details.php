@@ -360,6 +360,9 @@ include 'views/header.php';
 .hover-bg-white:hover { background-color: #fff !important; }
 .collapse-chevron { transition: transform 0.3s ease; }
 [aria-expanded="true"] .collapse-chevron { transform: rotate(180deg); }
+.shadow-soft { box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.op-50 { opacity: 0.5; }
+.op-30 { opacity: 0.3; }
 </style>
 
 <!-- ═══════  HERO  ═══════ -->
@@ -598,18 +601,33 @@ include 'views/header.php';
                                      data-bs-target="#<?= $collapseId ?>" 
                                      style="cursor: pointer; user-select: none;">
                                     <div class="d-flex align-items-center gap-3">
-                                        <div class="p-2 bg-white rounded-circle border d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px;">
+                                        <div class="p-2 bg-white rounded-circle border d-flex align-items-center justify-content-center shadow-soft" style="width: 42px; height: 42px; flex-shrink: 0;">
                                             <i class="fas fa-user-circle text-muted fs-4"></i>
                                         </div>
-                                        <div>
-                                            <div class="fw-800 small text-dark"><?= e($m['username']) ?></div>
-                                            <div class="smallest text-muted d-flex gap-2 align-items-center">
-                                                <span><?= e($m['email']) ?></span>
-                                                <span class="text-success fw-900">• Active</span>
+                                        <div class="overflow-hidden">
+                                            <div class="d-flex align-items-center gap-2 mb-0">
+                                                <span class="fw-800 small text-dark text-truncate"><?= e($m['username']) ?></span>
+                                                <span class="badge bg-soft-success text-success smallest fw-900 border-0" style="font-size: 8px; padding: 2px 6px;">ACTIVE</span>
                                             </div>
+                                            <div class="smallest text-muted text-truncate"><?= e($m['email']) ?></div>
                                         </div>
                                     </div>
-                                    <i class="fas fa-chevron-down smallest text-muted collapse-chevron"></i>
+                                    
+                                    <div class="d-flex align-items-center gap-3">
+                                        <!-- New Compact Limit Pill -->
+                                        <div class="d-flex align-items-center bg-white border rounded-pill shadow-soft transition-all cursor-pointer hover-bg-light" 
+                                             style="height: 34px; overflow: hidden;"
+                                             onclick="event.stopPropagation(); editMemberLimit(<?= $m['sub_id'] ?>, <?= $m['custom_borrow_limit'] ?? 0 ?>, '<?= addslashes($m['username']) ?>')">
+                                            <div class="h-100 px-2 d-flex align-items-center bg-light border-end">
+                                                <i class="fas fa-sliders-h text-muted" style="font-size: 10px;"></i>
+                                            </div>
+                                            <div class="px-3 fw-800 text-dark" style="font-size: 11px;">
+                                                Limit: <span class="text-primary"><?= $m['custom_borrow_limit'] ?? 'Auto' ?></span>
+                                            </div>
+                                        </div>
+                                        
+                                        <i class="fas fa-chevron-down smallest text-muted collapse-chevron op-30 ms-1"></i>
+                                    </div>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -928,10 +946,11 @@ include 'views/header.php';
                             <div>
                                 <strong>Borrow Limit:</strong> 
                                 <?php 
-                                    $tier = strtolower($user['membership_tier'] ?? 'bronze');
-                                    $limit = ($tier === 'platinum') ? 'Unlimited' : getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3)) . ' Books';
-                                    echo $limit;
+                                    echo $planLimit . ' Books'; 
                                 ?>
+                                <?php if ($rules['is_custom'] ?? false): ?>
+                                    <span class="badge bg-soft-warning text-warning smaller ms-1">Custom</span>
+                                <?php endif; ?>
                             </div>
                         </li>
                         <li class="mb-2 d-flex gap-2">
@@ -963,5 +982,55 @@ include 'views/header.php';
     </div>
 </section>
 
+
+<script>
+function editMemberLimit(subId, currentLimit, memberName) {
+    Swal.fire({
+        title: `Adjust Borrow Limit`,
+        text: `Set individual borrow limit for ${memberName}`,
+        input: 'number',
+        inputLabel: 'Books (0 to reset to tier default)',
+        inputValue: currentLimit || 0,
+        showCancelButton: true,
+        confirmButtonText: 'Update Limit',
+        confirmButtonColor: '#E07A5F',
+        inputValidator: (value) => {
+            if (value < 0) {
+                return 'Limit cannot be negative!'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const formData = new FormData();
+            formData.append('sub_id', subId);
+            formData.append('limit', result.value);
+
+            fetch('api/membership_update_limit.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({
+                        title: 'Updated!',
+                        text: data.message,
+                        icon: 'success',
+                        confirmButtonColor: '#E07A5F'
+                    }).then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error', 'An unexpected error occurred.', 'error');
+            });
+        }
+    });
+}
+</script>
 
 <?php include 'views/footer.php'; ?>
