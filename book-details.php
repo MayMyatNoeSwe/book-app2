@@ -802,10 +802,10 @@ function confirmBorrow() {
     <?php if (Auth::check() && $unreturnedBooksCount >= $borrowLimit): ?>
     Swal.fire({
         icon: 'error',
-        title: 'Borrow Limit Reached',
+        title: 'Total Borrow Limit Reached',
         html: '<div style="font-size:15px;line-height:1.7;">' +
-              'You currently have <strong><?= $unreturnedBooksCount ?></strong> unreturned books on this card (max <?= $borrowLimit ?>).<br>' +
-              'Please return a book or switch to another member card before borrowing.' +
+              'Your family has already borrowed <strong><?= $unreturnedBooksCount ?></strong> books on this plan (max <?= $borrowLimit ?>).<br>' +
+              'You have reached the total quota for this subscription period.' +
               '</div>',
         confirmButtonText: 'Got it',
         confirmButtonColor: '#d48b71',
@@ -822,7 +822,7 @@ function confirmBorrow() {
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
               '<div><i class="fas fa-calendar-day me-2" style="color:#10b981;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
               '<div><i class="fas fa-clock me-2" style="color:#f59e0b;width:18px;"></i><strong>Due Date:</strong> <?= date("M j, Y", strtotime("+".$borrowDuration." days")) ?></div>' +
-              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Current card usage:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?></div>' +
+              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Group total borrows:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?></div>' +
               '</div>' +
               '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +
               '<i class="fas fa-shield-alt me-1"></i> Card used: <strong>' + <?= json_encode(ucfirst($msRules['tier'] ?: 'Bronze')) ?> + ' Member</strong>' +

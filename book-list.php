@@ -84,8 +84,8 @@ if (Auth::check()) {
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    // Group Usage for Active Card
-    $unreturnedBooksCount = $library->getGroupUsageCount($activeSubId);
+    // Group Usage (Cumulative History for the active plan)
+    $unreturnedBooksCount = $library->getGroupTotalBorrowsCount($activeSubId);
 }
 
 include 'views/header.php';
@@ -889,12 +889,12 @@ include 'views/header.php';
                         <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
                         <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
                         <li>
-                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
-                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?> 
+                            <i class="fas <?= $unreturnedBooksCount >= $borrowLimit ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
+                            <strong>Group Total Borrows:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?> 
                             <?php if ($unreturnedBooksCount >= $borrowLimit): ?>
-                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
+                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the total quota for this plan.</span>
                             <?php elseif ($unreturnedBooksCount > 0): ?>
-                                <span class="text-danger small">(Please return on time)</span>
+                                <span class="text-danger small">(Plan Usage)</span>
                             <?php endif; ?>
                         </li>
                     </ul>

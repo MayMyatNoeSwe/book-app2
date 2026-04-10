@@ -187,12 +187,14 @@ class Library
             'limit' => $limit,
             'days'  => $days,
             'fine'  => $fine,
+            'share_limit' => (int)getSetting($tier . '_share_limit', 5),
+            'single_limit' => (int)getSetting($tier . '_single_limit', 3),
             'sub_id' => $activeSubId,
             'free_borrowing' => ($tier !== 'bronze')
         ];
     }
 
-    public function getGroupUsageCount(int $subId): int
+    public function getGroupUsageCount(int $subId, ?int $userId = null): int
     {
         // 1. Identify the 'Root' (Host) Subscription ID
         $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
@@ -201,15 +203,22 @@ class Library
         if (!$sub) return 0;
         $rootId = $sub['parent_id'] ?: $sub['id'];
 
-        // 2. Count unreturned books for the entire group
-        $stmt = $this->pdo->prepare("
-            SELECT COUNT(*) FROM borrowing_history 
-            WHERE subscription_id IN (
-                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
-            ) 
-            AND returned_at IS NULL AND `status` IN ('pending','approved')
-        ");
-        $stmt->execute([$rootId, $rootId]);
+        // 2. Count unreturned books for the entire group (or specific user)
+        $sql = "SELECT COUNT(*) FROM borrowing_history 
+                WHERE subscription_id IN (
+                    SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+                ) 
+                AND returned_at IS NULL AND `status` IN ('pending','approved')";
+        
+        $params = [$rootId, $rootId];
+        
+        if ($userId) {
+            $sql .= " AND user_id = ?";
+            $params[] = $userId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         return (int)$stmt->fetchColumn();
     }
 
@@ -226,13 +235,86 @@ class Library
         return max(1, (int)$stmt->fetchColumn());
     }
 
+    /**
+     * Identify the total borrowings for the entire group (historical + active)
+     */
+    public function getGroupTotalBorrowsCount(int $subId): int
+    {
+        $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
+        $stmt->execute([$subId]);
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$sub) return 0;
+        $rootId = $sub['parent_id'] ?: $sub['id'];
+
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*) FROM borrowing_history 
+            WHERE subscription_id IN (
+                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+            )
+            AND status != 'rejected'
+        ");
+        $stmt->execute([$rootId, $rootId]);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
+     * Identify the total returns for the entire group
+     */
+    public function getGroupTotalReturnsCount(int $subId): int
+    {
+        $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
+        $stmt->execute([$subId]);
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$sub) return 0;
+        $rootId = $sub['parent_id'] ?: $sub['id'];
+
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*) FROM borrowing_history 
+            WHERE subscription_id IN (
+                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+            )
+            AND returned_at IS NOT NULL
+            AND status != 'rejected'
+        ");
+        $stmt->execute([$rootId, $rootId]);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
+     * Identify the total penalty fees for the entire group
+     */
+    public function getGroupTotalPenaltyAmount(int $subId): float
+    {
+        $stmt = $this->pdo->prepare("SELECT id, parent_id FROM user_subscriptions WHERE id = ?");
+        $stmt->execute([$subId]);
+        $sub = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$sub) return 0.0;
+        $rootId = $sub['parent_id'] ?: $sub['id'];
+
+        $stmt = $this->pdo->prepare("
+            SELECT SUM(penalty_fee) FROM borrowing_history 
+            WHERE subscription_id IN (
+                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+            )
+            AND status != 'rejected'
+        ");
+        $stmt->execute([$rootId, $rootId]);
+        return (float)($stmt->fetchColumn() ?: 0.0);
+    }
+
     public function borrowBook(string $bookId, int $userId): bool
     {
         $rules = $this->getMembershipRules($userId);
         
-        // Group-wide Total Limit Check (Shared Pool)
-        $totalGroupUsage = $this->getGroupUsageCount($rules['sub_id']);
+        // 1. Group-wide Total Limit Check (Shared Quota Pool)
+        $totalGroupUsage = $this->getGroupTotalBorrowsCount($rules['sub_id']);
         if ($totalGroupUsage >= (int)$rules['limit']) {
+            return false;
+        }
+
+        // 2. Individual Active Limit Check (Books At Home)
+        $individualActive = $this->getGroupUsageCount($rules['sub_id'], $userId); 
+        if ($individualActive >= (int)$rules['single_limit']) {
             return false;
         }
 
@@ -780,8 +862,9 @@ class Library
         $stmt->execute([$subId]);
         $pendingInvites = (int)$stmt->fetchColumn();
 
-        if ($activeMembers + $pendingInvites >= 5) {
-            return ['success' => false, 'message' => 'No slots available. Limit: 5 members per group.'];
+        $shareLimit = (int)getSetting($sub['tier'] . '_share_limit', 5);
+        if ($activeMembers + $pendingInvites >= $shareLimit) {
+            return ['success' => false, 'message' => "No slots available. Limit: {$shareLimit} members per group for " . ucfirst($sub['tier']) . " tier."];
         }
 
         // Generate token

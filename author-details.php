@@ -41,19 +41,25 @@ $totalPages = ceil($totalBooks / $limit);
 $hasNextPage = $page < $totalPages;
 $hasPrevPage = $page > 1;
 
-// User Borrowing Stats for the Modal
-$hasBorrowedBefore = false;
-$unreturnedBooksCount = 0;
 if (Auth::check()) {
     $userId = Auth::id();
     $pdo = $library->getPdo();
+    
+    // Membership Rules for Active Card
+    $msRules = $library->getMembershipRules($userId);
+    $activeSubId = $msRules['sub_id'];
+    $borrowLimit = (int)$msRules['limit'];
+
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND `status` IN ('pending','approved')");
-    $stmt->execute([$userId]);
-    $unreturnedBooksCount = $stmt->fetchColumn();
+    // Group Usage (Cumulative History for the active plan)
+    $unreturnedBooksCount = $library->getGroupTotalBorrowsCount($activeSubId);
+} else {
+    $hasBorrowedBefore = false;
+    $unreturnedBooksCount = 0;
+    $borrowLimit = 3; // Default for guests/no active sub
 }
 
 $pageTitle = $authorName . " - Author Details";
@@ -714,29 +720,29 @@ function buildAuthorUrl($newParams = []) {
                         <li><i class="fas fa-book text-primary me-2"></i><strong>Books:</strong> 1 Book</li>
                         <li><i class="fas fa-user-clock text-warning me-2"></i><strong>Status:</strong> <?= $hasBorrowedBefore ? 'Existing Borrower' : 'First-time Borrower' ?></li>
                         <li>
-                            <i class="fas <?= $unreturnedBooksCount > 0 ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
-                            <strong>Unreturned Books:</strong> <?= $unreturnedBooksCount ?> / 3 
-                            <?php if ($unreturnedBooksCount >= 3): ?>
-                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the maximum borrow limit. Please return a book first.</span>
+                            <i class="fas <?= $unreturnedBooksCount >= $borrowLimit ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success' ?> me-2"></i>
+                            <strong>Group Total Borrows:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?> 
+                            <?php if ($unreturnedBooksCount >= $borrowLimit): ?>
+                                <br><span class="text-danger small mt-1 d-block"><i class="fas fa-ban me-1"></i>You have reached the total quota for this plan.</span>
                             <?php elseif ($unreturnedBooksCount > 0): ?>
-                                <span class="text-danger small">(Please return on time)</span>
+                                <span class="text-danger small">(Plan Usage)</span>
                             <?php endif; ?>
                         </li>
                     </ul>
                 </div>
                 <?php endif; ?>
 
-                <?php if (Auth::check() && $unreturnedBooksCount >= 3): ?>
+                <?php if (Auth::check() && $unreturnedBooksCount >= $borrowLimit): ?>
                     <p class="fw-700 text-center mb-0 text-danger" style="font-size: 16px;"><i class="fas fa-times-circle me-1"></i>Cannot Proceed</p>
                 <?php else: ?>
                     <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
                 <?php endif; ?>
             </div>
             <div class="modal-footer flex-column gap-2 text-center">
-                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'disabled' : '' ?>>
+                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && $unreturnedBooksCount >= $borrowLimit) ? 'disabled' : '' ?>>
                     <i class="fas fa-check me-2"></i>Confirm & Borrow
                 </button>
-                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= 3) ? 'Close' : 'Maybe later' ?></button>
+                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && $unreturnedBooksCount >= $borrowLimit) ? 'Close' : 'Maybe later' ?></button>
             </div>
         </div>
     </div>

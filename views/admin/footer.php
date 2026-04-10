@@ -15,7 +15,41 @@
         const currentTheme = localStorage.getItem('theme') || 'light';
         html.setAttribute('data-bs-theme', currentTheme);
         
-        console.log("Admin Dashboard Initialized with " + currentTheme + " theme");
+        // Sidebar Drawer Toggle
+        const sidebar = document.getElementById('adminSidebar');
+        const main = document.querySelector('.admin-main');
+        const toggleBtn = document.getElementById('drawerToggle');
+        const toggleIcon = toggleBtn?.querySelector('i');
+        
+        const setSidebarState = (collapsed) => {
+            if (collapsed) {
+                sidebar?.classList.add('collapsed');
+                main?.classList.add('collapsed');
+                if (toggleIcon) {
+                    toggleIcon.classList.remove('fa-chevron-left');
+                    toggleIcon.classList.add('fa-chevron-right');
+                }
+            } else {
+                sidebar?.classList.remove('collapsed');
+                main?.classList.remove('collapsed');
+                if (toggleIcon) {
+                    toggleIcon.classList.remove('fa-chevron-right');
+                    toggleIcon.classList.add('fa-chevron-left');
+                }
+            }
+            localStorage.setItem('admin_sidebar_collapsed', collapsed ? 'true' : 'false');
+        };
+
+        // Initialize from localStorage
+        const isCollapsed = localStorage.getItem('admin_sidebar_collapsed') === 'true';
+        setSidebarState(isCollapsed);
+
+        toggleBtn?.addEventListener('click', function() {
+            const nowCollapsed = !sidebar.classList.contains('collapsed');
+            setSidebarState(nowCollapsed);
+        });
+        
+        console.log("Admin Dashboard Initialized");
     });
     </script>
 </body>

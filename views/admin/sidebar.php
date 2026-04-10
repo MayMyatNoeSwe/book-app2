@@ -2,6 +2,10 @@
 $currentScript = basename($_SERVER['SCRIPT_NAME']);
 ?>
 <aside class="admin-sidebar d-flex flex-column" id="adminSidebar">
+    <button class="drawer-toggle-btn d-none d-lg-flex" id="drawerToggle">
+        <i class="fas fa-chevron-left"></i>
+    </button>
+    
     <div class="sidebar-logo">
         <a href="<?= baseUrl() ?>/admin/index.php" class="text-decoration-none d-flex align-items-center gap-2">
             <div class="logo-box bg-primary rounded-3 d-flex align-items-center justify-content-center shadow-primary" style="width: 38px; height: 38px;">

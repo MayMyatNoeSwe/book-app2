@@ -43,6 +43,11 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? 
 $stmt->execute([$userId]);
 $unpaidPenaltyCount = $stmt->fetchColumn();
 
+// Keep a backup of individual stats for the personal activity row
+$myBorrows = $totalBorrows;
+$myReturns = $totalReturns;
+$myPenaltyAmount = $totalPenaltyAmount;
+
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
 $stmt->execute([$userId]);
 $totalOrders = $stmt->fetchColumn();
@@ -123,17 +128,30 @@ if (!empty($possibleHostSubs)) {
     $hostSubId = $possibleHostSubs[0]['id'];
     $hostSubTier = $possibleHostSubs[0]['tier'];
     
-    $groupMembers = $lib->getGroupMembers($hostSubId);
+    // Centralized Group Aggregates - Bound to active family plan
+    $totalBorrows = $lib->getGroupTotalBorrowsCount($hostSubId);
+    $totalReturns = $lib->getGroupTotalReturnsCount($hostSubId);
+    $totalPenaltyAmount = $lib->getGroupTotalPenaltyAmount($hostSubId);
+    
+    // UI components rely on this for the current books at home count
+    $groupAggregate = [
+        'active' => $lib->getGroupUsageCount($hostSubId)
+    ];
+
     foreach ($groupMembers as &$m) {
-        // Fetch stats for members
-        $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active', (int)$m['sub_id']);
-        $m['history'] = $lib->getUserBorrows($m['user_id'], 'past', (int)$m['sub_id']);
+        $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active'); 
+        $m['history'] = $lib->getUserBorrows($m['user_id'], 'past');
         
-        $stmt = $pdo->prepare("SELECT COUNT(*) as total_b, COUNT(returned_at) as total_r, SUM(penalty_fee) as total_p FROM borrowing_history WHERE user_id = ? AND subscription_id = ?");
-        $stmt->execute([$m['user_id'], $m['sub_id']]);
+        $stmt = $pdo->prepare("SELECT COUNT(*) as total_b, COUNT(returned_at) as total_r, SUM(penalty_fee) as total_p FROM borrowing_history WHERE user_id = ?");
+        $stmt->execute([$m['user_id']]);
         $m['stats'] = $stmt->fetch();
     }
     unset($m);
+    
+    $rules = $lib->getMembershipRules($userId);
+    $planLimit = $rules['limit'] ?? 0;
+    $shareLimit = $rules['share_limit'] ?? 5;
+    $singleLimit = $rules['single_limit'] ?? 3;
 }
 
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
@@ -424,48 +442,113 @@ include 'views/header.php';
 </section>
 
 <!-- ═══════  STATS  ═══════ -->
-<div class="container ud-stats-container">
-    <div class="row g-3 g-lg-4">
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon orange"><i class="fas fa-book-open"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalBorrows) ?></div>
-                <div class="ud-stat-lbl">Borrows</div>
+<div class="container ud-stats-container mb-5">
+    <!-- Row 1: Family Group Aggregates -->
+    <div class="mb-5 animate__animated animate__fadeInUp">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Family Group Activity</h6>
+            <div class="flex-grow-1 border-bottom opacity-10"></div>
+        </div>
+        <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 g-lg-4">
+            <!-- Borrows -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon orange mb-2"><i class="fas fa-users"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalBorrows) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Borrows</div>
+                </div>
+            </div>
+            <!-- Returns -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon mint mb-2"><i class="fas fa-undo"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalReturns) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Returns</div>
+                </div>
+            </div>
+            <!-- Capacity -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon blue mb-2"><i class="fas fa-book-reader"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $groupAggregate['active'] ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Books At Home</div>
+                </div>
+            </div>
+            <!-- Shared Limit -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon blue mb-2"><i class="fas fa-layer-group"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $planLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Plan Quota</div>
+                </div>
+            </div>
+            <!-- Single Limit -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon gold mb-2"><i class="fas fa-user-lock"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $singleLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Limit Per Member</div>
+                </div>
+            </div>
+            <!-- Fine -->
+            <div class="col">
+                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white shadow-soft">
+                    <div class="ud-stat-icon hex-danger mb-2" style="background:rgba(220,53,69,0.1); color:#dc3545;"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalPenaltyAmount) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Fines</div>
+                </div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon mint"><i class="fas fa-undo"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReturns) ?></div>
-                <div class="ud-stat-lbl">Returns</div>
-            </div>
+    </div>
+
+    <!-- Row 2: Personal Activity -->
+    <div class="animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">My Personal Activity</h6>
+            <div class="flex-grow-1 border-bottom opacity-10"></div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon orange"><i class="fas fa-shopping-bag"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalOrders) ?></div>
-                <div class="ud-stat-lbl">Orders</div>
+        <div class="row g-3 g-lg-4">
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon orange mb-2"><i class="fas fa-book-open text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($myBorrows) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Borrows</div>
+                </div>
             </div>
-        </div>
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon gold"><i class="fas fa-exclamation-triangle"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalPenaltyAmount) ?></div>
-                <div class="ud-stat-lbl">Penalties (Ks)</div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon mint mb-2"><i class="fas fa-undo text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($myReturns) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Returns</div>
+                </div>
             </div>
-        </div>
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon blue"><i class="fas fa-bookmark"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReservations) ?></div>
-                <div class="ud-stat-lbl">Resrv.</div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon gold mb-2"><i class="fas fa-exclamation-triangle text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($myPenaltyAmount) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Fine</div>
+                </div>
             </div>
-        </div>
-        <div class="col-6 col-lg-2">
-            <div class="ud-stat-card">
-                <div class="ud-stat-icon orange"><i class="fas fa-star"></i></div>
-                <div class="ud-stat-num text-truncate px-1"><?= number_format($totalReviews) ?></div>
-                <div class="ud-stat-lbl">Reviews</div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon blue mb-2"><i class="fas fa-user-tag text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalOrders) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">Orders</div>
+                </div>
+            </div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon blue mb-2"><i class="fas fa-bookmark text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalReservations) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">Reservations</div>
+                </div>
+            </div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon gold mb-2"><i class="fas fa-star text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= number_format($totalReviews) ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">Reviews</div>
+                </div>
             </div>
         </div>
     </div>
@@ -482,7 +565,7 @@ include 'views/header.php';
                 <div class="col-lg-5 border-end p-4 p-xl-5 bg-white">
                     <div class="mb-4">
                         <h5 class="fw-800 mb-1">Manage Members</h5>
-                        <p class="text-muted smaller">Add or review your shared account activities. (<?= count($groupMembers) ?>/5 Slots Filled)</p>
+                        <p class="text-muted smaller">Add or review your shared account activities. (<?= count($groupMembers) ?>/<?= $shareLimit ?> Slots Filled)</p>
                     </div>
 
                     <!-- Invite Form View -->

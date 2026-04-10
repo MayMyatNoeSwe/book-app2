@@ -268,18 +268,18 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                 <p>There are no borrow records matching this filter.</p>
             </div>
         <?php else: ?>
-            <div class="table-responsive">
-                <table class="bm-table">
-                    <thead>
+            <div class="table-responsive-stack-container">
+                <table class="table table-borderless align-middle admin-table-premium mb-0">
+                    <thead class="bg-lightest">
                         <tr>
-                            <th>#</th>
-                            <th>User</th>
-                            <th>Book</th>
-                            <th>Requested</th>
-                            <th>Due Date</th>
-                            <th>Status</th>
-                            <th>Fees</th>
-                            <th>Actions</th>
+                            <th class="ps-4 text-uppercase smallest fw-800">ID</th>
+                            <th class="text-uppercase smallest fw-800">USER</th>
+                            <th class="text-uppercase smallest fw-800">BOOK DETAILS</th>
+                            <th class="text-uppercase smallest fw-800">BORROWED ON</th>
+                            <th class="text-uppercase smallest fw-800">DUE DATE</th>
+                            <th class="text-uppercase smallest fw-800">STATUS</th>
+                            <th class="px-4 text-uppercase smallest fw-800">FEES</th>
+                            <th class="pe-4 text-center text-uppercase smallest fw-800">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -288,38 +288,38 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                             $fallback = getDummyBookCover($r['title'] ?? '', $r['author'] ?? '', 80, 110);
                         ?>
                         <tr>
-                            <td class="text-muted fw-bold"><?= $r['id'] ?></td>
-                            <td>
+                            <td class="ps-4 text-muted fw-bold" data-label="ID">#<?= $r['id'] ?></td>
+                            <td data-label="USER">
                                 <div class="bm-user-cell">
-                                    <div class="bm-user-avatar"><?= strtoupper(substr($r['username'], 0, 1)) ?></div>
+                                    <div class="bm-user-avatar bg-primary-soft text-primary"><?= strtoupper(substr($r['username'], 0, 1)) ?></div>
                                     <div>
                                         <div class="fw-bold" style="font-size:13px;"><?= e($r['username']) ?></div>
-                                        <div class="text-muted" style="font-size:11px;"><?= e($r['email']) ?></div>
+                                        <div class="text-muted smallest"><?= e($r['email']) ?></div>
                                     </div>
                                 </div>
                             </td>
-                            <td>
+                            <td data-label="BOOK DETAILS">
                                 <div class="bm-book-cell">
-                                    <img src="<?= $coverUrl ?>" class="bm-book-cover" alt="" onerror="this.src='<?= $fallback ?>'">
-                                    <div>
-                                        <div class="fw-bold" style="font-size:13px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($r['title']) ?></div>
-                                        <div class="text-muted" style="font-size:11px;"><?= e($r['author']) ?></div>
+                                    <img src="<?= $coverUrl ?>" class="bm-book-cover shadow-sm rounded-1" alt="" onerror="this.src='<?= $fallback ?>'">
+                                    <div class="overflow-hidden">
+                                        <div class="fw-800 text-dark text-truncate" style="font-size:13px; max-width:180px;"><?= e($r['title']) ?></div>
+                                        <div class="text-muted smallest"><?= e($r['author']) ?></div>
                                     </div>
                                 </div>
                             </td>
-                            <td>
-                                <div style="font-size:13px;"><?= date('M j, Y', strtotime($r['borrowed_at'])) ?></div>
-                                <div class="text-muted" style="font-size:11px;"><?= date('h:i A', strtotime($r['borrowed_at'])) ?></div>
+                            <td data-label="BORROWED ON">
+                                <div style="font-size:13px;" class="fw-bold"><?= date('M j, Y', strtotime($r['borrowed_at'])) ?></div>
+                                <div class="text-muted smallest"><?= date('h:i A', strtotime($r['borrowed_at'])) ?></div>
                             </td>
-                            <td>
-                                <div style="font-size:13px;"><?= date('M j, Y', strtotime($r['due_date'])) ?></div>
+                            <td data-label="DUE DATE">
+                                <div style="font-size:13px;" class="fw-bold"><?= date('M j, Y', strtotime($r['due_date'])) ?></div>
                                 <?php if ($r['is_overdue']): ?>
-                                    <div class="text-danger" style="font-size:11px;font-weight:700;">
-                                        <i class="fas fa-exclamation-triangle"></i> <?= $r['overdue_days'] ?> days overdue
+                                    <div class="text-danger fw-800 smallest">
+                                        <i class="fas fa-exclamation-triangle ms-1"></i> <?= $r['overdue_days'] ?> days overdue
                                     </div>
                                 <?php endif; ?>
                             </td>
-                            <td>
+                            <td data-label="STATUS">
                                 <?php if ($r['is_overdue'] && in_array($r['status'], ['approved', 'return_pending'])): ?>
                                     <span class="bm-status overdue"><i class="fas fa-exclamation-circle"></i> Overdue</span>
                                 <?php else: ?>
@@ -334,7 +334,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                     <span class="bm-status <?= $r['status'] ?>"><i class="fas <?= $icon ?>"></i> <?= ucfirst(str_replace('_', ' ', $r['status'])) ?></span>
                                 <?php endif; ?>
                             </td>
-                             <td class="px-4">
+                             <td class="px-4" data-label="FEES">
                                 <div class="fee-breakdown">
                                      <div class="d-flex justify-content-between mb-1">
                                         <span class="text-muted smallest fw-700">Borrow:</span>
@@ -362,7 +362,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                     <?php endif; ?>
                                 </div>
                             </td>
-                            <td>
+                            <td data-label="ACTIONS">
                                 <div class="d-flex gap-1 flex-wrap">
                                     <?php if ($r['status'] === 'pending'): ?>
                                         <form method="POST" id="approveBorrowForm_<?= $r['id'] ?>" style="display:inline;">

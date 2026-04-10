@@ -31,6 +31,7 @@
 
     /* Layout */
     --sidebar-width: 280px;
+    --sidebar-collapsed-width: 85px;
     --topbar-height: 80px;
 }
 
@@ -56,7 +57,11 @@ body {
     position: fixed;
     height: 100vh;
     z-index: 1040;
-    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.admin-sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
 }
 
 .sidebar-logo {
@@ -115,7 +120,61 @@ body {
     margin-left: var(--sidebar-width);
     width: calc(100% - var(--sidebar-width));
     padding: 0 2rem 2rem;
-    transition: all 0.3s;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.admin-main.collapsed {
+    margin-left: var(--sidebar-collapsed-width);
+    width: calc(100% - var(--sidebar-collapsed-width));
+}
+
+/* Collapsed Sidebar Items */
+.admin-sidebar.collapsed .sidebar-logo span,
+.admin-sidebar.collapsed .sidebar-menu .nav-link span,
+.admin-sidebar.collapsed .menu-label,
+.admin-sidebar.collapsed .user-meta,
+.admin-sidebar.collapsed .sidebar-footer a[title="Logout"] {
+    display: none !important;
+}
+
+.admin-sidebar.collapsed .sidebar-logo {
+    padding: 0;
+    justify-content: center;
+}
+
+.admin-sidebar.collapsed .nav-link {
+    justify-content: center;
+    padding: 0.85rem 0;
+}
+
+.admin-sidebar.collapsed .nav-link i {
+    margin-right: 0;
+    font-size: 1.3rem;
+}
+
+.drawer-toggle-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--p-border);
+    background: #fff;
+    color: var(--p-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: absolute;
+    right: -16px;
+    top: 24px;
+    z-index: 1050;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.drawer-toggle-btn:hover {
+    background: var(--p-primary);
+    color: #fff;
+    border-color: var(--p-primary);
 }
 
 /* Topbar Styles */
@@ -183,6 +242,91 @@ body {
     vertical-align: middle;
     color: var(--p-text-main);
     border-bottom: 1px solid var(--p-border);
+}
+
+/* Premium Responsive Table Stack */
+.admin-table-premium {
+    width: 100%;
+    margin-bottom: 1rem;
+    color: var(--p-text-main);
+    background: #fff;
+    border-radius: 12px;
+}
+
+@media screen and (max-width: 991.98px) {
+
+    .admin-table-premium,
+    .admin-table-premium thead,
+    .admin-table-premium tbody,
+    .admin-table-premium th,
+    .admin-table-premium td,
+    .admin-table-premium tr {
+        display: block !important;
+    }
+
+    .admin-table-premium thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .admin-table-premium tr {
+        border: 1px solid var(--p-border);
+        margin-bottom: 1.5rem;
+        border-radius: 20px;
+        background: #fff;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        overflow: hidden;
+        padding-bottom: 10px;
+    }
+
+    .admin-table-premium td {
+        border: none !important;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+        position: relative;
+        padding-left: 50% !important;
+        text-align: right !important;
+        min-height: 55px;
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+    }
+
+    .admin-table-premium td:before {
+        position: absolute;
+        left: 20px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: 800;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        color: var(--p-text-muted);
+        content: attr(data-label);
+        opacity: 0.7;
+    }
+
+    .admin-table-premium td[data-label="MEMBER CARD TIER"] {
+        background: rgba(78, 115, 223, 0.05);
+        text-align: left !important;
+        padding-left: 20px !important;
+        justify-content: flex-start !important;
+        padding-top: 15px !important;
+        padding-bottom: 15px !important;
+        border-bottom: 1px solid var(--p-border) !important;
+    }
+
+    .admin-table-premium td[data-label="MEMBER CARD TIER"]:before {
+        display: none;
+    }
+
+    .admin-table-premium .form-control {
+        width: 100% !important;
+        max-width: 150px !important;
+    }
 }
 
 /* Background Utilities */
