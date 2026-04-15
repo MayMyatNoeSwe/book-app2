@@ -134,7 +134,9 @@ if (Auth::check()) {
     // Fetch membership rules for the active card
     $msRules = $library->getMembershipRules($userId);
     $activeSubId = $msRules['sub_id'];
-    $borrowLimit = (int)$msRules['limit'];
+    $personalLimit = (int)$msRules['personal_limit'];
+    $groupLimit = (int)$msRules['group_limit'];
+    $isCustomLimit = $msRules['is_custom'];
     
     $borrowDuration = $msRules['days'];
     $borrowFine = $msRules['fine'];
@@ -143,8 +145,12 @@ if (Auth::check()) {
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    // Count unreturned books FOR THE ACTIVE GROUP
-    $unreturnedBooksCount = $library->getGroupUsageCount($activeSubId);
+    // Count usage following the same logic as Library::borrowBook
+    $personalActiveUsage = $library->getGroupUsageCount($activeSubId, $userId); // Active books (at home)
+    $groupTotalPoolUsage = $library->getGroupTotalBorrowsCount($activeSubId);     // Total quota usage (Pool)
+    
+    // Check if limit reached (either personal active or group pool)
+    $isLimitReached = ($personalActiveUsage >= $personalLimit) || ($groupTotalPoolUsage >= $groupLimit);
 
     // Check if return is pending for this book
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'return_pending'");
@@ -456,6 +462,36 @@ include 'views/header.php';
 @media (max-width: 576px) {
     .bd-meta-grid { grid-template-columns: 1fr; }
 }
+
+.tier-buy-btn {
+    display: inline-flex;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    cursor: pointer;
+    outline: none;
+}
+.tier-buy-btn:hover {
+    border-color: #d48b71;
+    background: #fff8f6;
+    color: #1e293b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(212,139,113,0.1);
+}
+.tier-buy-btn .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 10px;
+    display: inline-block;
+}
 </style>
 
 <!-- ═══════  HERO  ═══════ -->
@@ -635,6 +671,21 @@ include 'views/header.php';
                     <button onclick="shareBook('whatsapp')" title="WhatsApp"><i class="fab fa-whatsapp"></i></button>
                     <button onclick="copyBookLink()" title="Copy Link"><i class="fas fa-link"></i></button>
                 </div>
+
+                <!-- Membership Passes (Buy Buttons) -->
+                <div class="mt-4 pt-2">
+                    <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-3 opacity-50" style="font-size: 10px;">Membership Passes</h6>
+                    <div class="d-flex flex-wrap gap-3">
+                        <button type="button" class="tier-buy-btn" onclick="upgradeTier('silver', 'Silver Member', <?= (int)getSetting('silver_price', 5000) ?>)">
+                            <span class="dot" style="background: #d48b71;"></span>
+                            <span class="text-uppercase">Silver</span> <span class="mx-1 opacity-50">•</span> <span class="opacity-75">Buy Now</span>
+                        </button>
+                        <button type="button" class="tier-buy-btn" onclick="upgradeTier('gold', 'Gold Member', <?= (int)getSetting('gold_price', 12000) ?>)">
+                            <span class="dot" style="background: #c2664e;"></span>
+                            <span class="text-uppercase">Gold</span> <span class="mx-1 opacity-50">•</span> <span class="opacity-75">Buy Now</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -799,13 +850,17 @@ function borrowLoginAlert() {
 
 // ─── Borrow Confirmation Alert ───
 function confirmBorrow() {
-    <?php if (Auth::check() && $unreturnedBooksCount >= $borrowLimit): ?>
+    <?php if (Auth::check() && $isLimitReached): ?>
     Swal.fire({
         icon: 'error',
-        title: 'Total Borrow Limit Reached',
+        title: 'Borrow Limit Reached',
         html: '<div style="font-size:15px;line-height:1.7;">' +
-              'Your family has already borrowed <strong><?= $unreturnedBooksCount ?></strong> books on this plan (max <?= $borrowLimit ?>).<br>' +
-              'You have reached the total quota for this subscription period.' +
+              <?php if ($personalActiveUsage >= $personalLimit): ?>
+                'You have reached your <strong>personal active limit</strong> of <?= $personalLimit ?> books at home.<br>' +
+              <?php else: ?>
+                'Your family group has reached the <strong>total pool quota</strong> of <?= $groupLimit ?> books for this plan.<br>' +
+              <?php endif; ?>
+              'Please return some books or contact the host to borrow more.' +
               '</div>',
         confirmButtonText: 'Got it',
         confirmButtonColor: '#d48b71',
@@ -820,9 +875,9 @@ function confirmBorrow() {
               '</div>' +
               '<div style="display:flex;flex-direction:column;gap:6px;">' +
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
-              '<div><i class="fas fa-calendar-day me-2" style="color:#10b981;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
-              '<div><i class="fas fa-clock me-2" style="color:#f59e0b;width:18px;"></i><strong>Due Date:</strong> <?= date("M j, Y", strtotime("+".$borrowDuration." days")) ?></div>' +
-              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Group total borrows:</strong> <?= $unreturnedBooksCount ?> / <?= $borrowLimit ?></div>' +
+              '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Your Active Books:</strong> <?= $personalActiveUsage ?> / <?= $personalLimit ?></div>' +
+              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Group Pool Quota:</strong> <?= $groupTotalPoolUsage ?> / <?= $groupLimit ?></div>' +
+              '<div><i class="fas fa-calendar-day me-2" style="color:#f59e0b;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
               '</div>' +
               '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +
               '<i class="fas fa-shield-alt me-1"></i> Card used: <strong>' + <?= json_encode(ucfirst($msRules['tier'] ?: 'Bronze')) ?> + ' Member</strong>' +
@@ -941,6 +996,106 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+function upgradeTier(tierKey, tierName, price) {
+    if (typeof Swal === 'undefined') { alert('SweetAlert2 not loaded'); return; }
+    
+    const priceFormatted = price.toLocaleString();
+
+    Swal.fire({
+        title: 'Upgrade to ' + tierName,
+        html: `
+            <div class="text-center mb-4">Select your preferred payment method:</div>
+            <div class="pay-methods-list" style="display:flex; flex-direction:column; gap:10px; text-align:left;">
+                <div class="pay-item selected" onclick="selectPay(this)" style="padding:12px; border:2px solid #E07A5F; border-radius:12px; cursor:pointer; background:rgba(224,122,95,0.05); display:flex; justify-content:space-between; align-items:center;">
+                    <span class="fw-bold">KBZ Pay</span>
+                    <i class="fas fa-check-circle text-orange"></i>
+                </div>
+                <div class="pay-item" onclick="selectPay(this)" style="padding:12px; border:2px solid #eee; border-radius:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                    <span class="fw-bold">Wave Pay</span>
+                    <i class="far fa-circle opacity-50"></i>
+                </div>
+            </div>
+            <style>
+                .text-orange { color: #E07A5F !important; }
+            </style>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#E07A5F',
+        confirmButtonText: 'Next: Scan & Pay',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true,
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const method = document.querySelector('.pay-item.selected span').innerText;
+            showScanModal(tierKey, tierName, priceFormatted, method);
+        }
+    });
+}
+
+function selectPay(el) {
+    document.querySelectorAll('.pay-item').forEach(item => {
+        item.classList.remove('selected');
+        item.style.borderColor = '#eee';
+        item.style.backgroundColor = 'transparent';
+        item.querySelector('i').className = 'far fa-circle opacity-50';
+    });
+    el.classList.add('selected');
+    el.style.borderColor = '#E07A5F';
+    el.style.backgroundColor = 'rgba(224,122,95,0.05)';
+    el.querySelector('i').className = 'fas fa-check-circle text-orange';
+}
+
+function showScanModal(tierKey, tierName, priceStr, method) {
+    Swal.fire({
+        title: 'Scan to Pay: ' + priceStr + ' Ks',
+        html: `
+            <div class="text-center">
+                <p class="mb-3 text-muted">Please scan the QR code using your ${method} app.</p>
+                <div class="mx-auto border p-2 rounded mb-4" style="width:180px; height:180px; background:#f8fafc;">
+                    <img src="assets/img/qr/kbz_qr.png" class="img-fluid" alt="Payment QR" onerror="this.src='https://via.placeholder.com/150?text=QR+Code'">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label d-block text-start fw-bold" style="font-size:12px;">Upload Receipt Screenshot</label>
+                    <input type="file" id="pay-screenshot" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="alert alert-info py-2" style="font-size:11px; border:none; border-radius:8px;">
+                    <i class="fas fa-info-circle me-1"></i> Admin will verify your payment within 1-2 hours.
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#E07A5F',
+        confirmButtonText: 'Submit Request',
+        reverseButtons: true,
+        preConfirm: () => {
+            const fileInput = document.getElementById('pay-screenshot');
+            if (fileInput.files.length === 0) {
+                Swal.showValidationMessage('Please upload a screenshot');
+                return false;
+            }
+            return fileInput.files[0];
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const formData = new FormData();
+            formData.append('tier', tierKey);
+            formData.append('payment_method', method);
+            formData.append('screenshot', result.value);
+            
+            Swal.fire({ title: 'Uploading...', didOpen: () => Swal.showLoading() });
+            
+            fetch('api/membership_request.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({ icon: 'success', title: 'Sent!', text: data.message, confirmButtonColor: '#E07A5F' });
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Oops', text: data.message });
+                }
+            });
+        }
+    });
+}
 </script>
 
 <?php include 'views/footer.php'; ?>

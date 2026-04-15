@@ -179,19 +179,22 @@ class Library
         $activeSubId = $row['active_subscription_id'] ?? null;
 
         // Fetch dynamic rules from settings using global getSetting helper
-        $limit = ($row && $row['custom_borrow_limit'] !== null) 
+        $baseLimit = (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
+        $personalLimit = ($row && $row['custom_borrow_limit'] !== null) 
                  ? (int)$row['custom_borrow_limit'] 
-                 : (int)getSetting($tier . '_borrow_limit', getSetting('borrow_limit', 3));
+                 : $baseLimit;
+        
         $days = (int)getSetting($tier . '_borrow_duration', getSetting('borrow_duration', 14));
         $fine = (int)getSetting($tier . '_fine_per_day', getSetting('fine_per_day', 500));
 
         return [
             'tier' => $tier,
-            'limit' => $limit,
+            'limit' => $personalLimit, // For backward compatibility if needed elsewhere
+            'personal_limit' => $personalLimit,
+            'group_limit' => $baseLimit,
             'days'  => $days,
             'fine'  => $fine,
             'share_limit' => (int)getSetting($tier . '_share_limit', 5),
-            'single_limit' => (int)getSetting($tier . '_single_limit', 3),
             'sub_id' => $activeSubId,
             'free_borrowing' => ($tier !== 'bronze'),
             'is_custom' => ($row && $row['custom_borrow_limit'] !== null)
@@ -309,16 +312,18 @@ class Library
     public function borrowBook(string $bookId, int $userId): bool
     {
         $rules = $this->getMembershipRules($userId);
+        $personalLimit = (int)$rules['personal_limit'];
+        $groupLimit = (int)$rules['group_limit'];
         
-        // 1. Group-wide Total Limit Check (Shared Quota Pool)
+        // 1. Group-wide Total Quota Check (Total books the group is allowed to borrow)
         $totalGroupUsage = $this->getGroupTotalBorrowsCount($rules['sub_id']);
-        if ($totalGroupUsage >= (int)$rules['limit']) {
+        if ($totalGroupUsage >= $groupLimit) {
             return false;
         }
 
-        // 2. Individual Active Limit Check (Books At Home)
+        // 2. Individual Active Limit Check (Books that this specific user currently has at home)
         $individualActive = $this->getGroupUsageCount($rules['sub_id'], $userId); 
-        if ($individualActive >= (int)$rules['single_limit']) {
+        if ($individualActive >= $personalLimit) {
             return false;
         }
 

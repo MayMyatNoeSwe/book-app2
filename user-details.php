@@ -13,11 +13,20 @@ if (!Auth::check()) {
     exit;
 }
 
-$config = require 'config/database.php';
-$dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
-$pdo = new PDO($dsn, $config['username'], $config['password'], $config['options']);
-
+$lib = new \App\Library();
+$pdo = $lib->getPdo();
 $userId = Auth::id();
+
+// Handle Membership Switching
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['switch_plan'])) {
+    $subId = (int)$_POST['sub_id'];
+    if ($lib->setActiveCard($userId, $subId)) {
+        header("Location: user-details.php?success=plan_switched");
+    } else {
+        header("Location: user-details.php?error=switch_failed");
+    }
+    exit;
+}
 
 // Fetch user info
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
@@ -102,8 +111,8 @@ $lib = new \App\Library($pdo);
 // Initialize Group Stats with defaults (Supports both standalone and group members)
 $rules = $lib->getMembershipRules($userId);
 $planLimit = $rules['limit'] ?? 0;
+$groupPoolLimit = $rules['group_limit'] ?? 0;
 $shareLimit = $rules['share_limit'] ?? 5;
-$singleLimit = $rules['single_limit'] ?? 3;
 $groupAggregate = [
     'active' => $user['active_subscription_id'] ? $lib->getGroupUsageCount($user['active_subscription_id']) : $myBorrows
 ];
@@ -363,6 +372,14 @@ include 'views/header.php';
 .shadow-soft { box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 .op-50 { opacity: 0.5; }
 .op-30 { opacity: 0.3; }
+
+.grayscale {
+    filter: grayscale(100%);
+    opacity: 0.6;
+}
+.transition-all {
+    transition: all 0.2s ease-in-out;
+}
 </style>
 
 <!-- ═══════  HERO  ═══════ -->
@@ -421,24 +438,6 @@ include 'views/header.php';
                             </div>
                         </div>
                     </div>
-
-                    <!-- Active Subscriptions -->
-                    <?php if (!empty($activeSubs)): ?>
-                        <div class="mt-4 px-1 text-start">
-                             <h6 class="text-uppercase letter-spacing-1 fw-800 smaller text-muted mb-3 opacity-75" style="font-size: 10px;">
-                                <i class="fas fa-layer-group me-2"></i>Active Memberships
-                            </h6>
-                            <div class="d-flex flex-wrap gap-2">
-                                <?php foreach ($activeSubs as $sub): ?>
-                                    <div class="p-2 px-3 rounded-pill bg-white border d-flex align-items-center gap-2 shadow-sm">
-                                        <div class="tier-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--bookhouse-orange);"></div>
-                                        <span class="fw-800 text-uppercase text-dark" style="font-size: 10px;"><?= e($sub['tier']) ?></span>
-                                        <span class="text-muted" style="font-size: 10px;">• <?= date('M j, Y, g:i A', strtotime($sub['expires_at'])) ?></span>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -447,6 +446,37 @@ include 'views/header.php';
 
 <!-- ═══════  STATS  ═══════ -->
 <div class="container ud-stats-container mb-5">
+    <!-- Active Membership Switcing (Purchased Plans) -->
+    <?php if (!empty($activeSubs)): ?>
+        <div class="mb-4 animate__animated animate__fadeInUp">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Switch Active Card</h6>
+                <div class="flex-grow-1 border-bottom opacity-10"></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <?php 
+                $activeCardId = $user['active_subscription_id'];
+                foreach ($activeSubs as $sub): 
+                    $isActive = ($activeCardId == $sub['id']);
+                ?>
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="switch_plan" value="1">
+                        <input type="hidden" name="sub_id" value="<?= $sub['id'] ?>">
+                        <button type="submit" class="p-2 px-3 rounded-pill bg-white border d-flex align-items-center gap-2 shadow-sm transition-all <?= $isActive ? 'border-primary' : 'opacity-75 grayscale' ?>" style="font-size: 11px; outline: none; <?= $isActive ? 'border-width: 2px; box-shadow: 0 4px 12px rgba(78, 115, 223, 0.15) !important;' : '' ?>">
+                            <div class="tier-dot" style="width: 10px; height: 10px; border-radius: 50%; background: <?= $isActive ? 'var(--bookhouse-orange)' : '#94a3b8' ?>;"></div>
+                            <span class="fw-800 text-uppercase <?= $isActive ? 'text-dark' : 'text-muted' ?>"><?= e($sub['tier']) ?> Member</span>
+                            <?php if ($isActive): ?>
+                                <span class="badge bg-soft-primary text-primary border-0 ms-1" style="font-size: 9px;">CURRENTLY ACTIVE</span>
+                            <?php else: ?>
+                                <span class="text-muted" style="font-size: 9px;">• Click to Activate</span>
+                            <?php endif; ?>
+                        </button>
+                    </form>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- Row 1: Family Group Aggregates -->
     <div class="mb-5 animate__animated animate__fadeInUp">
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -478,20 +508,20 @@ include 'views/header.php';
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Books At Home</div>
                 </div>
             </div>
-            <!-- Shared Limit -->
+            <!-- Shared Pool Quota -->
             <div class="col">
                 <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white shadow-soft">
                     <div class="ud-stat-icon blue mb-2"><i class="fas fa-layer-group"></i></div>
-                    <div class="ud-stat-num mb-1"><?= $planLimit ?></div>
-                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Plan Quota</div>
+                    <div class="ud-stat-num mb-1"><?= $groupPoolLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Group Pool Limit</div>
                 </div>
             </div>
-            <!-- Single Limit -->
+            <!-- Personal Limit -->
             <div class="col">
                 <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white shadow-soft">
                     <div class="ud-stat-icon gold mb-2"><i class="fas fa-user-lock"></i></div>
-                    <div class="ud-stat-num mb-1"><?= $singleLimit ?></div>
-                    <div class="ud-stat-lbl text-muted fw-800 smaller">Limit Per Member</div>
+                    <div class="ud-stat-num mb-1"><?= $planLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Your Active Limit</div>
                 </div>
             </div>
             <!-- Fine -->
@@ -946,10 +976,15 @@ include 'views/header.php';
                             <div>
                                 <strong>Borrow Limit:</strong> 
                                 <?php 
-                                    echo $planLimit . ' Books'; 
+                                    echo $planLimit . ' Active Books'; 
                                 ?>
                                 <?php if ($rules['is_custom'] ?? false): ?>
-                                    <span class="badge bg-soft-warning text-warning smaller ms-1">Custom</span>
+                                    <span class="badge bg-soft-warning text-warning smaller ms-1">Custom Limit</span>
+                                <?php endif; ?>
+                                <?php if ($groupPoolLimit > 0 && ($user['active_subscription_id'] ?? 0) > 0): ?>
+                                    <div class="text-muted" style="font-size:11px; margin-top:2px;">
+                                        <i class="fas fa-layer-group me-1"></i> Family Pool: <?= $groupPoolLimit ?> Books
+                                    </div>
                                 <?php endif; ?>
                             </div>
                         </li>

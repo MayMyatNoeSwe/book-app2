@@ -34,7 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             setSetting($tier . '_fine_per_day', $_POST[$tier . '_fine_per_day'] ?? $_POST['fine_per_day']);
             setSetting($tier . '_price', $_POST[$tier . '_price'] ?? '0');
             setSetting($tier . '_share_limit', $_POST[$tier . '_share_limit'] ?? '5');
-            setSetting($tier . '_single_limit', $_POST[$tier . '_single_limit'] ?? '3');
         }
 
         setFlashMessage('Library member card policies updated successfully.', 'success');
@@ -212,9 +211,8 @@ renderAdminLayout('System Settings', function() {
                                                     <label class="form-label smallest fw-800 text-muted text-uppercase mb-1">Max Shared Members</label>
                                                     <input type="number" name="<?= $tier['key'] ?>_share_limit" class="form-control rounded-3 border-light shadow-none" value="<?= getSetting($tier['key'].'_share_limit', 5) ?>">
                                                 </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label smallest fw-800 text-muted text-uppercase mb-1">Single Member Cap</label>
-                                                    <input type="number" name="<?= $tier['key'] ?>_single_limit" class="form-control rounded-3 border-light shadow-none" value="<?= getSetting($tier['key'].'_single_limit', 3) ?>">
+                                                <div class="col-md-4 d-none">
+                                                    <!-- Managed by plan owners -->
                                                 </div>
                                                 <div class="col-md-4">
                                                     <label class="form-label smallest fw-800 text-muted text-uppercase mb-1">Group Total Cap</label>

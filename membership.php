@@ -329,10 +329,6 @@ include 'views/header.php';
                     <?php endforeach; ?>
                 </ul>
                 <div class="d-flex flex-column gap-2 mt-auto">
-                    <?php if (!$isPrimary): ?>
-                         <button class="btn btn-tier btn-tier-success w-100" onclick="setActiveCard(<?= $card['id'] ?>)">Select as Active Card</button>
-                    <?php endif; ?>
-                    
                     <?php if ($parentId): ?>
                         <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
                     <?php else: ?>
