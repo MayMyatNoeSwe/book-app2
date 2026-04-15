@@ -14,7 +14,7 @@ $pdo = $library->getPdo();
 // Real Stats
 $totalBooks = $pdo->query("SELECT COUNT(*) FROM books")->fetchColumn();
 $totalUsers = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-$totalBorrowed = $pdo->query("SELECT COUNT(*) FROM borrowing_history WHERE returned_at IS NULL")->fetchColumn();
+$totalBorrowed = $pdo->query("SELECT COUNT(*) FROM borrowing_history WHERE returned_at IS NULL AND status IN ('pending', 'approved', 'return_pending', 'waiting')")->fetchColumn();
 
 // Monthly revenue from orders
 $monthlyRevenue = 0;

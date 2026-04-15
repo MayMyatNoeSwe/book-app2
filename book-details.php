@@ -147,10 +147,10 @@ if (Auth::check()) {
     
     // Count usage following the same logic as Library::borrowBook
     $personalActiveUsage = $library->getGroupUsageCount($activeSubId, $userId); // Active books (at home)
-    $groupTotalPoolUsage = $library->getGroupTotalBorrowsCount($activeSubId);     // Total quota usage (Pool)
+    $groupPoolUsage = $library->getGroupUsageCount($activeSubId);               // Pool usage (at home)
     
     // Check if limit reached (either personal active or group pool)
-    $isLimitReached = ($personalActiveUsage >= $personalLimit) || ($groupTotalPoolUsage >= $groupLimit);
+    $isLimitReached = ($personalActiveUsage >= $personalLimit) || ($groupPoolUsage >= $groupLimit);
 
     // Check if return is pending for this book
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'return_pending'");
@@ -876,7 +876,6 @@ function confirmBorrow() {
               '<div style="display:flex;flex-direction:column;gap:6px;">' +
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
               '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Your Active Books:</strong> <?= $personalActiveUsage ?> / <?= $personalLimit ?></div>' +
-              '<div><i class="fas fa-layer-group me-2" style="color:#6366f1;width:18px;"></i><strong>Group Pool Quota:</strong> <?= $groupTotalPoolUsage ?> / <?= $groupLimit ?></div>' +
               '<div><i class="fas fa-calendar-day me-2" style="color:#f59e0b;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
               '</div>' +
               '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +

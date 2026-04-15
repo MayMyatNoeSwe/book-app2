@@ -36,15 +36,15 @@ $user = $stmt->fetch();
 $activeSubs = Auth::getSubscriptions();
 $tier = strtolower($user['membership_tier'] ?? 'bronze');
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ?");
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND status IN ('approved', 'returned', 'return_pending')");
 $stmt->execute([$userId]);
 $totalBorrows = $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NOT NULL");
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NOT NULL AND status = 'returned'");
 $stmt->execute([$userId]);
 $totalReturns = $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT SUM(penalty_fee) FROM borrowing_history WHERE user_id = ?");
+$stmt = $pdo->prepare("SELECT SUM(penalty_fee) FROM borrowing_history WHERE user_id = ? AND status != 'rejected'");
 $stmt->execute([$userId]);
 $totalPenaltyAmount = $stmt->fetchColumn() ?: 0;
 
@@ -153,15 +153,18 @@ if (!empty($possibleHostSubs)) {
     $groupAggregate['active'] = $lib->getGroupUsageCount($hostSubId);
     $groupMembers = $lib->getGroupMembers($hostSubId);
 
-    foreach ($groupMembers as &$m) {
-        $m['borrows'] = $lib->getUserBorrows($m['user_id'], 'active'); 
-        $m['history'] = $lib->getUserBorrows($m['user_id'], 'past');
-        
-        $stmt = $pdo->prepare("SELECT COUNT(*) as total_b, COUNT(returned_at) as total_r, SUM(penalty_fee) as total_p FROM borrowing_history WHERE user_id = ?");
-        $stmt->execute([$m['user_id']]);
-        $m['stats'] = $stmt->fetch();
-    }
     unset($m);
+}
+
+// 2. Detect if user is a Shared Member (Guest on someone else's plan)
+$isShared = false;
+$parentSubId = null;
+foreach ($activeSubs as $s) {
+    if ($s['parent_id']) {
+        $isShared = true;
+        $parentSubId = $s['parent_id'];
+        break;
+    }
 }
 
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
@@ -174,30 +177,26 @@ include 'views/header.php';
 /* ─── User Profile Premium ─── */
 .ud-hero {
     position: relative; overflow: hidden;
-    padding: 60px 0; border-bottom: 1px solid rgba(0,0,0,0.06);
-    background:
-        radial-gradient(ellipse at 85% 20%, rgba(224,122,95,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 10% 80%, rgba(129,178,154,0.05) 0%, transparent 50%),
-        var(--bookhouse-bg, #FFF3F0);
+    padding: 80px 0 60px; border-bottom: 1px solid rgba(0,0,0,0.05);
+    background: #fff;
 }
 [data-bs-theme="dark"] .ud-hero {
-    background:
-        radial-gradient(ellipse at 85% 20%, rgba(224,122,95,0.12) 0%, transparent 60%),
-        radial-gradient(ellipse at 10% 80%, rgba(129,178,154,0.1) 0%, transparent 50%),
-        #0f172a;
-    border-bottom-color: rgba(255,255,255,0.06);
+    background: #0f172a; border-bottom-color: rgba(255,255,255,0.05);
 }
-.ud-hero::before {
-    content: ''; position: absolute; inset: 0;
-    background-image:
-        linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
-    background-size: 60px 60px; pointer-events: none;
+.ud-hero-bg {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: 
+        radial-gradient(circle at 80% 20%, rgba(224,122,95,0.05), transparent 40%),
+        radial-gradient(circle at 20% 80%, rgba(139,92,246,0.05), transparent 40%);
 }
-[data-bs-theme="dark"] .ud-hero::before {
-    background-image:
-        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+.ud-grid {
+    position: absolute; inset: 0; opacity: 0.4;
+    background-image: linear-gradient(#f1f5f9 1px, transparent 1px), linear-gradient(90deg, #f1f5f9 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none;
+}
+[data-bs-theme="dark"] .ud-grid {
+    background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
 }
 
 .ud-profile-card {
@@ -206,28 +205,31 @@ include 'views/header.php';
 }
 .ud-avatar {
     width: 140px; height: 140px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--bookhouse-orange), #c2664e);
+    background: linear-gradient(135deg, #d48b71, #be6e56);
     color: #fff; display: flex; align-items: center; justify-content: center;
-    font-size: 50px; font-weight: 800;
-    box-shadow: 0 15px 35px rgba(224,122,95,0.25);
-    border: 6px solid rgba(255,255,255,0.8);
-    flex-shrink: 0;
+    font-size: 56px; font-weight: 800;
+    box-shadow: 0 20px 40px rgba(212,139,113,0.3);
+    border: 8px solid #fff; flex-shrink: 0;
 }
-[data-bs-theme="dark"] .ud-avatar { border-color: rgba(30,41,59,0.8); }
+[data-bs-theme="dark"] .ud-avatar { border-color: #1e293b; }
+
 .ud-info h1 {
     font-family: 'Playfair Display', serif;
-    font-weight: 800; font-size: clamp(2rem, 4vw, 3rem);
-    color: var(--bookhouse-text); margin-bottom: 5px;
+    font-weight: 800; font-size: 52px;
+    color: #1e293b; margin-bottom: 8px; letter-spacing: -0.5px;
 }
+[data-bs-theme="dark"] .ud-info h1 { color: #f8fafc; }
+
 .ud-info p {
-    font-size: 16px; color: var(--bookhouse-text-muted); margin-bottom: 20px;
-    display: flex; align-items: center; gap: 8px;
+    font-size: 18px; color: #64748b; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 10px; font-weight: 500;
 }
+
 .ud-badge {
-    background: rgba(224,122,95,0.1); color: var(--bookhouse-orange);
-    padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
-    display: inline-flex; align-items: center; gap: 6px; letter-spacing: 1px;
-    text-transform: uppercase;
+    padding: 8px 20px; border-radius: 999px; font-size: 12px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    display: inline-flex; align-items: center; gap: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
 }
 
 /* Stats Row */
@@ -315,46 +317,58 @@ include 'views/header.php';
     perspective: 1000px; margin-bottom: 40px;
 }
 .member-card {
-    position: relative; width: 100%; max-width: 480px; height: 260px;
-    border-radius: 24px; overflow: hidden;
-    padding: 30px; display: flex; flex-direction: column;
-    justify-content: space-between;
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-    color: #fff; transform-style: preserve-3d;
-    transition: transform 0.3s; margin: 0 auto;
+    position: relative; width: 100%; max-width: 400px; height: 250px;
+    border-radius: 24px; padding: 30px; color: #fff; overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15); display: flex; flex-direction: column;
+    justify-content: space-between; transition: transform 0.3s; margin: 0 auto;
 }
 .member-card:hover { transform: translateY(-5px) rotateX(2deg) rotateY(-2deg); }
 
-.member-card.bronze   { background: linear-gradient(135deg, #cd7f32, #8b4513, #cd7f32); }
-.member-card.silver   { background: linear-gradient(135deg, #bdc3c7, #2c3e50, #bdc3c7); }
-.member-card.gold     { background: linear-gradient(135deg, #f1c40f, #f39c12, #f1c40f); }
-.member-card.platinum { background: linear-gradient(135deg, #1e293b, #334155, #1e293b); }
+.member-card.bronze   { background: linear-gradient(135deg, #a87932, #5c3b1e); }
+.member-card.silver   { background: linear-gradient(135deg, #4b5563, #1e293b); }
+.member-card.gold     { background: linear-gradient(135deg, #ca8a04, #713f12); }
+.member-card.platinum { background: linear-gradient(135deg, #111827, #374151); }
 
 .card-pattern {
-    position: absolute; inset: 0; opacity: 0.15;
-    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    position: absolute; inset: 0; opacity: 0.1;
+    background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 1L13 2H11L12 1ZM1 12L2 13V11L1 12ZM23 12L22 13V11L23 12ZM12 23L13 22H11L12 23Z' fill='%23ffffff'/%3E%3C/g%3E%3C/svg%3E");
     pointer-events: none;
 }
 .card-glass-shine {
     position: absolute; top: -100%; left: -100%; width: 300%; height: 300%;
-    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.15) 55%, transparent 60%);
-    animation: shine 6s infinite linear; pointer-events: none;
+    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.05) 55%, transparent 60%);
+    animation: shine 8s infinite linear; pointer-events: none;
 }
-@keyframes shine { 100% { transform: translate(30%, 30%); } }
 
-.card-header { display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; }
-.card-logo { font-size: 24px; font-weight: 800; font-family: 'Playfair Display', serif; display: flex; align-items: center; gap: 10px; }
-.card-chip { width: 45px; height: 35px; background: linear-gradient(135deg, #ffd700, #b8860bc2); border-radius: 6px; box-shadow: inset 0 0 5px rgba(0,0,0,0.2); position: relative; }
-.card-chip::after { content: ''; position: absolute; inset: 6px; border: 1px solid rgba(0,0,0,0.1); border-radius: 2px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; z-index: 2; }
+.card-logo { 
+    font-size: 18px; font-weight: 800; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 8px; opacity: 0.9;
+}
+.card-chip { 
+    width: 42px; height: 32px; background: linear-gradient(135deg, #e5e7eb, #9ca3af); 
+    border-radius: 8px; position: relative; opacity: 1;
+}
+.card-chip::after { 
+    content: ''; position: absolute; inset: 6px; 
+    border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; 
+}
 
-.card-body { position: relative; z-index: 1; margin: 20px 0; }
-.card-number { font-family: 'Courier New', monospace; font-size: 22px; letter-spacing: 3px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+.card-body { position: relative; z-index: 2; margin: 40px 0; }
+.card-number { 
+    font-family: 'Space Mono', monospace; font-size: 24px; 
+    letter-spacing: 4px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    opacity: 0.95;
+}
 
-.card-footer { display: flex; justify-content: space-between; align-items: flex-end; z-index: 1; }
-.card-user-info .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; margin-bottom: 2px; }
-.card-user-info .val { font-size: 16px; font-weight: 700; text-transform: uppercase; }
+.card-footer { display: flex; justify-content: space-between; align-items: flex-end; z-index: 2; }
+.card-user-info .lbl { font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.6; margin-bottom: 4px; }
+.card-user-info .val { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.card-barcode { background: #fff; padding: 5px; border-radius: 4px; height: 40px; display: flex; align-items: center; }
+.card-barcode { 
+    background: rgba(255,255,255,0.9); padding: 4px; border-radius: 4px; 
+    height: 36px; display: flex; align-items: center; mix-blend-mode: screen;
+}
 
 @media (max-width: 767px) {
     .member-card { height: 220px; padding: 20px; }
@@ -384,6 +398,8 @@ include 'views/header.php';
 
 <!-- ═══════  HERO  ═══════ -->
 <section class="ud-hero">
+    <div class="ud-hero-bg"></div>
+    <div class="ud-grid"></div>
     <div class="container position-relative" style="z-index: 2;">
         <nav aria-label="breadcrumb" class="mb-4">
             <ol class="breadcrumb" style="font-size:13px;">
@@ -392,23 +408,37 @@ include 'views/header.php';
             </ol>
         </nav>
 
-        <div class="row align-items-center">
-            <div class="col-lg-7 mb-4 mb-lg-0">
-                <div class="ud-profile-card">
+        <div class="row align-items-center justify-content-between">
+            <!-- Left: Profile Info -->
+            <div class="col-lg-6 mb-5 mb-lg-0">
+                <div class="d-flex align-items-center gap-4">
                     <div class="ud-avatar">
                         <?= strtoupper(substr($user['username'] ?? 'User', 0, 1)) ?>
                     </div>
                     <div class="ud-info">
                         <h1><?= e($user['username']) ?></h1>
-                        <p><i class="fas fa-envelope text-muted"></i> <?= e($user['email']) ?></p>
-                        <div class="ud-badge">
-                            <i class="fas fa-shield-alt"></i> <?= strtoupper($user['role'] ?? 'USER') ?>
+                        <p class="mb-3"><i class="far fa-envelope"></i> <?= e($user['email']) ?></p>
+                        <div class="d-flex flex-wrap gap-2">
+                            <?php if ($isShared): ?>
+                                <div class="ud-badge" style="background: rgba(139,92,246,0.1); color: #7c3aed;">
+                                    <i class="fas fa-user-friends"></i> Shared <?= ucfirst($tier) ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="ud-badge">
+                                    <i class="fas fa-crown"></i> <?= ucfirst($tier) ?> Member
+                                </div>
+                            <?php endif; ?>
+                            <div class="ud-badge" style="background: rgba(59,130,246,0.1); color: #3b82f6;">
+                                <i class="fas fa-id-card"></i> <?= e($user['membership_id'] ?? '#N/A') ?>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Right: Membership Card -->
             <div class="col-lg-5">
-                <div class="member-card-wrap">
+                <div class="member-card-perspective">
                     <div class="member-card <?= e($user['membership_tier'] ?? 'bronze') ?>">
                         <div class="card-pattern"></div>
                         <div class="card-glass-shine"></div>
@@ -430,9 +460,9 @@ include 'views/header.php';
                                 <div class="val"><?= e($user['username']) ?></div>
                             </div>
                             <div class="card-barcode">
-                                <svg width="120" height="30" viewBox="0 0 120 30" xmlns="http://www.w3.org/2000/svg">
-                                    <?php for($i=0; $i<120; $i+=4): ?>
-                                        <rect x="<?= $i ?>" y="0" width="<?= rand(1,3) ?>" height="30" fill="#000" />
+                                <svg width="100" height="24" viewBox="0 0 100 24" xmlns="http://www.w3.org/2000/svg">
+                                    <?php for($i=0; $i<100; $i+=3): ?>
+                                        <rect x="<?= $i ?>" y="0" width="<?= rand(1,2) ?>" height="24" fill="#000" />
                                     <?php endfor; ?>
                                 </svg>
                             </div>
@@ -446,8 +476,8 @@ include 'views/header.php';
 
 <!-- ═══════  STATS  ═══════ -->
 <div class="container ud-stats-container mb-5">
-    <!-- Active Membership Switcing (Purchased Plans) -->
-    <?php if (!empty($activeSubs)): ?>
+    <!-- Active Membership Switching (Purchased Plans) -->
+    <?php if (!empty($activeSubs) && !$isShared): ?>
         <div class="mb-4 animate__animated animate__fadeInUp">
             <div class="d-flex align-items-center gap-2 mb-3">
                 <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Switch Active Card</h6>
@@ -477,17 +507,18 @@ include 'views/header.php';
         </div>
     <?php endif; ?>
 
-    <!-- Row 1: Family Group Aggregates -->
-    <div class="mb-5 animate__animated animate__fadeInUp">
+    <!-- Row 1: Family Group Activity (ONLY FOR HOST) -->
+    <?php if ($isHost): ?>
+    <div class="ud-stats-container animate__animated animate__fadeInUp">
         <div class="d-flex align-items-center gap-2 mb-3">
             <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Family Group Activity</h6>
             <div class="flex-grow-1 border-bottom opacity-10"></div>
         </div>
-        <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 g-lg-4">
+        <div class="row g-3 g-lg-4 row-cols-2 row-cols-md-3 row-cols-lg-6">
             <!-- Borrows -->
             <div class="col">
                 <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white shadow-soft">
-                    <div class="ud-stat-icon orange mb-2"><i class="fas fa-users"></i></div>
+                    <div class="ud-stat-icon orange mb-2"><i class="fas fa-layer-group"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($totalBorrows) ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Borrows</div>
                 </div>
@@ -495,7 +526,7 @@ include 'views/header.php';
             <!-- Returns -->
             <div class="col">
                 <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white shadow-soft">
-                    <div class="ud-stat-icon mint mb-2"><i class="fas fa-undo"></i></div>
+                    <div class="ud-stat-icon mint mb-2"><i class="fas fa-history"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($totalReturns) ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Returns</div>
                 </div>
@@ -534,6 +565,7 @@ include 'views/header.php';
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Row 2: Personal Activity -->
     <div class="animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
@@ -584,6 +616,15 @@ include 'views/header.php';
                     <div class="ud-stat-lbl text-muted fw-700">Reviews</div>
                 </div>
             </div>
+            <?php if ($isShared): ?>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white-50">
+                    <div class="ud-stat-icon gold mb-2"><i class="fas fa-user-shield text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $planLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">Quota Limit</div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -733,7 +774,13 @@ include 'views/header.php';
                                                     <div class="fw-800 text-dark text-truncate mb-1"><?= e($b['title']) ?></div>
                                                     <div class="smallest d-flex align-items-center gap-2">
                                                         <?php if($b['act_type'] == 'active'): ?>
-                                                            <span class="badge bg-soft-primary text-primary rounded-pill smaller fw-900"><i class="fas fa-clock fs-10 me-1"></i> READING</span>
+                                                            <?php if ($b['status'] === 'pending'): ?>
+                                                                <span class="badge bg-soft-warning text-warning rounded-pill smaller fw-900"><i class="fas fa-hourglass-half fs-10 me-1"></i> PENDING</span>
+                                                            <?php elseif ($b['status'] === 'return_pending'): ?>
+                                                                <span class="badge bg-soft-info text-info rounded-pill smaller fw-900"><i class="fas fa-sync fs-10 me-1"></i> RETURNING</span>
+                                                            <?php else: ?>
+                                                                <span class="badge bg-soft-primary text-primary rounded-pill smaller fw-900"><i class="fas fa-clock fs-10 me-1"></i> READING</span>
+                                                            <?php endif; ?>
                                                             <span class="text-muted fw-700">Due: <?= date('M d', strtotime($b['due_date'])) ?></span>
                                                         <?php else: ?>
                                                             <span class="badge bg-soft-success text-success rounded-pill smaller fw-900"><i class="fas fa-check-double fs-10 me-1"></i> RETURNED</span>
@@ -820,6 +867,10 @@ include 'views/header.php';
                                     <span class="ud-status returned">Returned</span>
                                 <?php elseif ($borrow['status'] === 'rejected'): ?>
                                     <span class="ud-status cancelled">Rejected</span>
+                                <?php elseif ($borrow['status'] === 'pending'): ?>
+                                    <span class="ud-status pending">Pending</span>
+                                <?php elseif ($borrow['status'] === 'return_pending'): ?>
+                                    <span class="ud-status processing">Processing</span>
                                 <?php elseif ($isOverdue): ?>
                                     <span class="ud-status cancelled">Overdue</span>
                                 <?php else: ?>

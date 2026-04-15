@@ -254,14 +254,14 @@ class Library
         $rootId = $sub['parent_id'] ?: $sub['id'];
 
         $stmt = $this->pdo->prepare("
-            SELECT COUNT(*) FROM borrowing_history 
-            WHERE subscription_id IN (
-                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
-            )
-            AND status != 'rejected'
-        ");
-        $stmt->execute([$rootId, $rootId]);
-        return (int)$stmt->fetchColumn();
+        SELECT COUNT(*) FROM borrowing_history 
+        WHERE subscription_id IN (
+            SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+        )
+        AND status IN ('approved', 'returned', 'return_pending')
+    ");
+    $stmt->execute([$rootId, $rootId]);
+    return (int)$stmt->fetchColumn();
     }
 
     /**
@@ -276,15 +276,14 @@ class Library
         $rootId = $sub['parent_id'] ?: $sub['id'];
 
         $stmt = $this->pdo->prepare("
-            SELECT COUNT(*) FROM borrowing_history 
-            WHERE subscription_id IN (
-                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
-            )
-            AND returned_at IS NOT NULL
-            AND status != 'rejected'
-        ");
-        $stmt->execute([$rootId, $rootId]);
-        return (int)$stmt->fetchColumn();
+        SELECT COUNT(*) FROM borrowing_history 
+        WHERE subscription_id IN (
+            SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+        )
+        AND status = 'returned'
+    ");
+    $stmt->execute([$rootId, $rootId]);
+    return (int)$stmt->fetchColumn();
     }
 
     /**
@@ -299,14 +298,14 @@ class Library
         $rootId = $sub['parent_id'] ?: $sub['id'];
 
         $stmt = $this->pdo->prepare("
-            SELECT SUM(penalty_fee) FROM borrowing_history 
-            WHERE subscription_id IN (
-                SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
-            )
-            AND status != 'rejected'
-        ");
-        $stmt->execute([$rootId, $rootId]);
-        return (float)($stmt->fetchColumn() ?: 0.0);
+        SELECT SUM(penalty_fee) FROM borrowing_history 
+        WHERE subscription_id IN (
+            SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
+        )
+        AND status IN ('approved', 'returned', 'return_pending')
+    ");
+    $stmt->execute([$rootId, $rootId]);
+    return (float)($stmt->fetchColumn() ?: 0.0);
     }
 
     public function borrowBook(string $bookId, int $userId): bool
@@ -315,9 +314,9 @@ class Library
         $personalLimit = (int)$rules['personal_limit'];
         $groupLimit = (int)$rules['group_limit'];
         
-        // 1. Group-wide Total Quota Check (Total books the group is allowed to borrow)
-        $totalGroupUsage = $this->getGroupTotalBorrowsCount($rules['sub_id']);
-        if ($totalGroupUsage >= $groupLimit) {
+        // 1. Group-wide Pool Quota Check (Active books currently out for the whole group)
+        $totalGroupActive = $this->getGroupUsageCount($rules['sub_id']);
+        if ($totalGroupActive >= $groupLimit) {
             return false;
         }
 
@@ -477,7 +476,7 @@ class Library
         }
         
         if ($type === 'active' || $type === 'current') {
-            $sql .= " AND bh.returned_at IS NULL AND bh.status IN ('pending', 'approved', 'return_pending')";
+            $sql .= " AND bh.returned_at IS NULL AND bh.status IN ('approved', 'return_pending')";
         } elseif ($type === 'pending') {
             $sql .= " AND bh.status = 'pending'";
         } elseif ($type === 'past') {
