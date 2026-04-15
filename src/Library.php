@@ -945,7 +945,17 @@ class Library
             WHERE us.parent_id = ? AND (us.expires_at > NOW() OR us.expires_at IS NULL)
         ");
         $stmt->execute([$subId]);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $members = [];
+        foreach ($results as $m) {
+            // Fetch stats and borrows Specifically for this group sub
+            $m['stats'] = $this->getUserStats($m['user_id'], $subId);
+            $m['borrows'] = $this->getUserActiveBorrows($m['user_id'], $subId);
+            $m['history'] = $this->getUserBorrowHistory($m['user_id'], $subId);
+            $members[] = $m;
+        }
+        return $members;
     }
 
     public function getSentInvitations(int $subId): array
@@ -1525,6 +1535,54 @@ class Library
     /**
      * Get author's most popular books (by borrows and ratings)
      */
+    /**
+     * Get statistics for a specific user on a specific subscription
+     */
+    public function getUserStats(int $userId, int $subId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT 
+                COUNT(*) as total_b,
+                SUM(penalty_fee) as total_p
+            FROM borrowing_history 
+            WHERE user_id = ? AND subscription_id = ?
+        ");
+        $stmt->execute([$userId, $subId]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: ['total_b' => 0, 'total_p' => 0];
+    }
+
+    /**
+     * Get active borrows for a specific user on a specific subscription
+     */
+    public function getUserActiveBorrows(int $userId, int $subId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT b.*, h.title, h.author, h.cover_image
+            FROM borrowing_history b
+            JOIN books h ON b.book_id = h.id
+            WHERE b.user_id = ? AND b.subscription_id = ? AND b.status IN ('pending', 'approved', 'return_pending')
+            ORDER BY b.borrowed_at DESC
+        ");
+        $stmt->execute([$userId, $subId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get historical borrows for a specific user on a specific subscription
+     */
+    public function getUserBorrowHistory(int $userId, int $subId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT b.*, h.title, h.author, h.cover_image
+            FROM borrowing_history b
+            JOIN books h ON b.book_id = h.id
+            WHERE b.user_id = ? AND b.subscription_id = ? AND b.status = 'returned'
+            ORDER BY b.returned_at DESC
+        ");
+        $stmt->execute([$userId, $subId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     public function getAuthorPopularBooks(string $authorName, int $limit = 6): array
     {
         $sql = "SELECT b.*, 

@@ -36,26 +36,49 @@ $user = $stmt->fetch();
 $activeSubs = Auth::getSubscriptions();
 $tier = strtolower($user['membership_tier'] ?? 'bronze');
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND status IN ('pending', 'approved', 'return_pending', 'returned')");
-$stmt->execute([$userId]);
+$activeSubId = $user['active_subscription_id'];
+
+// 1. Core Borrowing Stats (Filtered by Active Sub if one exists)
+$sqlBase = "FROM borrowing_history WHERE user_id = ?";
+$params = [$userId];
+if ($activeSubId) {
+    $sqlBase .= " AND subscription_id = ?";
+    $params[] = $activeSubId;
+}
+
+$stmt = $pdo->prepare("SELECT COUNT(*) " . $sqlBase . " AND status IN ('pending', 'approved', 'return_pending', 'returned')");
+$stmt->execute($params);
 $totalBorrows = $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NOT NULL AND status = 'returned'");
-$stmt->execute([$userId]);
+$stmt = $pdo->prepare("SELECT COUNT(*) " . $sqlBase . " AND returned_at IS NOT NULL AND status = 'returned'");
+$stmt->execute($params);
 $totalReturns = $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT SUM(penalty_fee) FROM borrowing_history WHERE user_id = ? AND status != 'rejected'");
-$stmt->execute([$userId]);
+$stmt = $pdo->prepare("SELECT SUM(penalty_fee) " . $sqlBase . " AND status != 'rejected'");
+$stmt->execute($params);
 $totalPenaltyAmount = $stmt->fetchColumn() ?: 0;
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND penalty_fee > 0 AND penalty_paid = 0");
-$stmt->execute([$userId]);
+$stmt = $pdo->prepare("SELECT COUNT(*) " . $sqlBase . " AND penalty_fee > 0 AND penalty_paid = 0");
+$stmt->execute($params);
 $unpaidPenaltyCount = $stmt->fetchColumn();
 
 // Keep a backup of individual stats for the personal activity row
 $myBorrows = $totalBorrows;
 $myReturns = $totalReturns;
 $myPenaltyAmount = $totalPenaltyAmount;
+
+// Get currently active sub detail
+$activeSubDetail = null;
+foreach ($activeSubs as $s) {
+    if ($s['id'] == $user['active_subscription_id']) {
+        $activeSubDetail = $s;
+        break;
+    }
+}
+$isCurrentlyShared = ($activeSubDetail && $activeSubDetail['parent_id']);
+$displayTier = $activeSubDetail ? ucfirst($activeSubDetail['tier']) : ucfirst($tier);
+$statLabelSuffix = $activeSubDetail ? " $displayTier Borrows" : " My Borrows";
+$statReturnSuffix = $activeSubDetail ? " $displayTier Returns" : " My Returns";
 
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
 $stmt->execute([$userId]);
@@ -69,15 +92,20 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM reservations WHERE user_id = ?");
 $stmt->execute([$userId]);
 $totalReservations = $stmt->fetchColumn();
 
-// Fetch Borrowing History
-$stmt = $pdo->prepare("
-    SELECT bh.*, b.title, b.author, b.cover_image 
-    FROM borrowing_history bh
-    JOIN books b ON bh.book_id = b.id
-    WHERE bh.user_id = ?
-    ORDER BY bh.borrowed_at DESC LIMIT 5
-");
-$stmt->execute([$userId]);
+// Fetch Borrowing History (Filtered by active sub)
+$bhSql = "SELECT bh.*, b.title, b.author, b.cover_image 
+          FROM borrowing_history bh
+          JOIN books b ON bh.book_id = b.id
+          WHERE bh.user_id = ?";
+$bhParams = [$userId];
+if ($activeSubId) {
+    $bhSql .= " AND bh.subscription_id = ?";
+    $bhParams[] = $activeSubId;
+}
+$bhSql .= " ORDER BY bh.borrowed_at DESC LIMIT 5";
+
+$stmt = $pdo->prepare($bhSql);
+$stmt->execute($bhParams);
 $borrows = $stmt->fetchAll();
 
 $cart = new Cart($pdo);
@@ -170,8 +198,24 @@ foreach ($activeSubs as $s) {
 $pendingInvitesForMe = $lib->getPendingInvitationsForUser($user['email']);
 $sentInvites = $hostSubId ? $lib->getSentInvitations($hostSubId) : [];
 
+$hasPrimary = false;
+foreach ($activeSubs as $sub) {
+    if (!$sub['parent_id']) { $hasPrimary = true; break; }
+}
+
 include 'views/header.php';
 ?>
+
+<style>
+.transition-all { transition: all 0.3s ease; }
+
+.ud-view-transition {
+    animation: fadeInUp 0.4s ease-out;
+}
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 <style>
 /* ─── User Profile Premium ─── */
@@ -423,20 +467,22 @@ include 'views/header.php';
                                 <div class="ud-badge" style="background: rgba(139,92,246,0.1); color: #7c3aed;">
                                     <i class="fas fa-user-friends"></i> Shared <?= ucfirst($tier) ?>
                                 </div>
-                            <?php else: ?>
+                            <?php endif; ?>
+                            <?php if ($hasPrimary): ?>
                                 <div class="ud-badge">
                                     <i class="fas fa-crown"></i> <?= ucfirst($tier) ?> Member
                                 </div>
+                                <div class="ud-badge" style="background: rgba(59,130,246,0.1); color: #3b82f6;">
+                                    <i class="fas fa-id-card"></i> <?= e($user['membership_id'] ?? '#N/A') ?>
+                                </div>
                             <?php endif; ?>
-                            <div class="ud-badge" style="background: rgba(59,130,246,0.1); color: #3b82f6;">
-                                <i class="fas fa-id-card"></i> <?= e($user['membership_id'] ?? '#N/A') ?>
-                            </div>
                         </div>
+
                     </div>
                 </div>
             </div>
 
-            <!-- Right: Membership Card -->
+            <!-- Right Alternative: Sharing Info -->
             <div class="col-lg-5">
                 <div class="member-card-perspective">
                     <div class="member-card <?= e($user['membership_tier'] ?? 'bronze') ?>">
@@ -470,6 +516,26 @@ include 'views/header.php';
                     </div>
                 </div>
             </div>
+
+            <!-- Right Alternative: Sharing Info (If Family tab but no card) -->
+            <div class="col-lg-5 <?= $activeTab === 'family' ? 'ud-view-transition' : 'd-none' ?>">
+                <div class="p-4 rounded-4 border bg-white shadow-soft text-center h-100 d-flex flex-column justify-content-center">
+                    <div class="ud-stat-icon gold mx-auto mb-3" style="width:64px; height:64px; font-size:24px;">
+                        <i class="fas fa-user-friends"></i>
+                    </div>
+                    <?php if ($isHost): ?>
+                        <h4 class="fw-800 text-dark mb-2">Family Hub</h4>
+                        <p class="text-muted smaller">You are hosting a <strong><?= ucfirst($hostSubTier) ?></strong> sharing group. Manage your members below.</p>
+                    <?php elseif ($isShared): ?>
+                        <h4 class="fw-800 text-dark mb-2">Shared Plan</h4>
+                        <p class="text-muted smaller">You are part of a shared <strong><?= ucfirst($tier) ?></strong> plan. Enjoy collective benefits!</p>
+                    <?php else: ?>
+                        <h4 class="fw-800 text-dark mb-2">No Sharing Yet</h4>
+                        <p class="text-muted smaller">Upgrade to Silver/Gold/Platinum to share benefits with your family.</p>
+                        <a href="plans.php" class="btn btn-primary rounded-pill mt-3 px-4 fw-800">Learn More</a>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
 </section>
@@ -477,8 +543,8 @@ include 'views/header.php';
 <!-- ═══════  STATS  ═══════ -->
 <div class="container ud-stats-container mb-5">
     <!-- Active Membership Switching (Purchased Plans) -->
-    <?php if (!empty($activeSubs) && !$isShared): ?>
-        <div class="mb-4 animate__animated animate__fadeInUp">
+    <?php if (!empty($activeSubs) && $hasPrimary): ?>
+        <div class="mb-4 ud-view-transition">
             <div class="d-flex align-items-center gap-2 mb-3">
                 <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Switch Active Card</h6>
                 <div class="flex-grow-1 border-bottom opacity-10"></div>
@@ -494,7 +560,7 @@ include 'views/header.php';
                         <input type="hidden" name="sub_id" value="<?= $sub['id'] ?>">
                         <button type="submit" class="p-2 px-3 rounded-pill bg-white border d-flex align-items-center gap-2 shadow-sm transition-all <?= $isActive ? 'border-primary' : 'opacity-75 grayscale' ?>" style="font-size: 11px; outline: none; <?= $isActive ? 'border-width: 2px; box-shadow: 0 4px 12px rgba(78, 115, 223, 0.15) !important;' : '' ?>">
                             <div class="tier-dot" style="width: 10px; height: 10px; border-radius: 50%; background: <?= $isActive ? 'var(--bookhouse-orange)' : '#94a3b8' ?>;"></div>
-                            <span class="fw-800 text-uppercase <?= $isActive ? 'text-dark' : 'text-muted' ?>"><?= e($sub['tier']) ?> Member</span>
+                            <span class="fw-800 text-uppercase <?= $isActive ? 'text-dark' : 'text-muted' ?>"><?= $sub['parent_id'] ? 'Shared ' : '' ?><?= e($sub['tier']) ?> Member</span>
                             <?php if ($isActive): ?>
                                 <span class="badge bg-soft-primary text-primary border-0 ms-1" style="font-size: 9px;">CURRENTLY ACTIVE</span>
                             <?php else: ?>
@@ -508,56 +574,51 @@ include 'views/header.php';
     <?php endif; ?>
 
     <!-- Row 1: Family Group Activity (ONLY FOR HOST) -->
-    <?php if ($isHost): ?>
-    <div class="ud-stats-container animate__animated animate__fadeInUp">
+    <?php if ($isHost && !$isCurrentlyShared): ?>
+    <div class="ud-view-transition">
         <div class="d-flex align-items-center gap-2 mb-3">
             <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">Family Group Activity</h6>
             <div class="flex-grow-1 border-bottom opacity-10"></div>
         </div>
         <div class="row g-3 g-lg-4 row-cols-2 row-cols-md-3 row-cols-lg-6">
-            <!-- Borrows -->
+            <!-- stats content same as before but wrapped -->
             <div class="col">
-                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon orange mb-2"><i class="fas fa-layer-group"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($totalBorrows) ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Borrows</div>
                 </div>
             </div>
-            <!-- Returns -->
             <div class="col">
-                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon mint mb-2"><i class="fas fa-history"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($totalReturns) ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Returns</div>
                 </div>
             </div>
-            <!-- Capacity -->
             <div class="col">
-                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon blue mb-2"><i class="fas fa-book-reader"></i></div>
                     <div class="ud-stat-num mb-1"><?= $groupAggregate['active'] ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Books At Home</div>
                 </div>
             </div>
-            <!-- Shared Pool Quota -->
             <div class="col">
-                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-blue border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon blue mb-2"><i class="fas fa-layer-group"></i></div>
                     <div class="ud-stat-num mb-1"><?= $groupPoolLimit ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Pool Limit</div>
                 </div>
             </div>
-            <!-- Personal Limit -->
             <div class="col">
-                <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon gold mb-2"><i class="fas fa-user-lock"></i></div>
                     <div class="ud-stat-num mb-1"><?= $planLimit ?></div>
-                    <div class="ud-stat-lbl text-muted fw-800 smaller">Your Active Limit</div>
+                    <div class="ud-stat-lbl text-muted fw-800 smaller">Personal Limit</div>
                 </div>
             </div>
-            <!-- Fine -->
             <div class="col">
-                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white shadow-soft">
+                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon hex-danger mb-2" style="background:rgba(220,53,69,0.1); color:#dc3545;"><i class="fas fa-exclamation-triangle"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($totalPenaltyAmount) ?></div>
                     <div class="ud-stat-lbl text-muted fw-800 smaller">Group Total Fines</div>
@@ -568,55 +629,58 @@ include 'views/header.php';
     <?php endif; ?>
 
     <!-- Row 2: Personal Activity -->
-    <div class="animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
+    <div class="ud-view-transition">
         <div class="d-flex align-items-center gap-2 mb-3">
-            <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">My Personal Activity</h6>
+            <h6 class="smallest text-uppercase fw-900 text-muted ls-2 mb-0">My Personal Stats</h6>
             <div class="flex-grow-1 border-bottom opacity-10"></div>
         </div>
         <div class="row g-3 g-lg-4">
             <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white-50">
+                <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon orange mb-2"><i class="fas fa-book-open text-opacity-75"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($myBorrows) ?></div>
-                    <div class="ud-stat-lbl text-muted fw-700">My Borrows</div>
+                    <div class="ud-stat-lbl text-muted fw-700"><?= $displayTier ?> Borrows</div>
                 </div>
             </div>
             <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white-50">
+                <div class="ud-stat-card border-top border-mint border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon mint mb-2"><i class="fas fa-undo text-opacity-75"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($myReturns) ?></div>
-                    <div class="ud-stat-lbl text-muted fw-700">My Returns</div>
+                    <div class="ud-stat-lbl text-muted fw-700"><?= $displayTier ?> Returns</div>
                 </div>
             </div>
             <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white-50">
+                <div class="ud-stat-card border-top border-danger border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon gold mb-2"><i class="fas fa-exclamation-triangle text-opacity-75"></i></div>
                     <div class="ud-stat-num mb-1"><?= number_format($myPenaltyAmount) ?></div>
                     <div class="ud-stat-lbl text-muted fw-700">My Fine</div>
                 </div>
             </div>
             <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
+                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon blue mb-2"><i class="fas fa-user-tag text-opacity-75"></i></div>
-                    <div class="ud-stat-num mb-1"><?= number_format($totalOrders) ?></div>
-                    <div class="ud-stat-lbl text-muted fw-700">Orders</div>
+                    <div class="ud-stat-num mb-1"><?= $totalOrders ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Orders</div>
                 </div>
             </div>
             <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
+                <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white">
+                    <div class="ud-stat-icon orange mb-2"><i class="fas fa-star text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $totalReviews ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Reviews</div>
+                </div>
+            </div>
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-secondary border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon blue mb-2"><i class="fas fa-bookmark text-opacity-75"></i></div>
-                    <div class="ud-stat-num mb-1"><?= number_format($totalReservations) ?></div>
-                    <div class="ud-stat-lbl text-muted fw-700">Reservations</div>
+                    <div class="ud-stat-num mb-1"><?= $totalReservations ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">My Saved</div>
                 </div>
             </div>
-            <div class="col-4 col-lg-2">
-                <div class="ud-stat-card border-top border-primary border-4 shadow-sm h-100 bg-white-50">
-                    <div class="ud-stat-icon gold mb-2"><i class="fas fa-star text-opacity-75"></i></div>
-                    <div class="ud-stat-num mb-1"><?= number_format($totalReviews) ?></div>
-                    <div class="ud-stat-lbl text-muted fw-700">Reviews</div>
-                </div>
-            </div>
-            <?php if ($isShared): ?>
+        </div>
+    </div>
+    </div>
+    <?php if ($isCurrentlyShared): ?>
             <div class="col-4 col-lg-2">
                 <div class="ud-stat-card border-top border-warning border-4 shadow-sm h-100 bg-white-50">
                     <div class="ud-stat-icon gold mb-2"><i class="fas fa-user-shield text-opacity-75"></i></div>
@@ -629,33 +693,38 @@ include 'views/header.php';
     </div>
 </div>
 
-<?php if ($isHost): ?>
-<!-- ═══════  FAMILY GROUP DASHBOARD  ═══════ -->
-<section class="mb-5 animate__animated animate__fadeIn">
-    <div class="container">
-        <h3 class="ud-section-title"><i class="fas fa-users"></i> Family Group Dashboard</h3>
-        <div class="ud-card border-0 shadow-sm overflow-hidden p-0" id="family_sharing_dashboard" style="background: rgba(255,255,255,0.4); backdrop-filter: blur(20px);">
-            <div class="row g-0">
-                <!-- Share Member Management -->
-                <div class="col-lg-5 border-end p-4 p-xl-5 bg-white">
-                    <div class="mb-4">
-                        <h5 class="fw-800 mb-1">Manage Members</h5>
-                        <p class="text-muted smaller">Add or review your shared account activities. (<?= count($groupMembers) ?>/<?= $shareLimit ?> Slots Filled)</p>
-                    </div>
+<!-- Family Group / Share Member Section (ONLY FOR THE PRIMARY HOST) -->
+<?php if ($isHost && !$isCurrentlyShared): ?>
+<section id="family_sharing_dashboard" class="ud-view-transition mt-5 pt-4">
+    <div class="container" style="max-width: 80% !important;">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="p-2 px-3 bg-dark text-white rounded-4 fw-900 smaller shadow-sm">GROUP MANAGER</div>
+            <div class="flex-grow-1 border-bottom opacity-10"></div>
+        </div>
 
-                    <!-- Invite Form View -->
-                    <form action="api/membership_invitations.php" method="POST" class="mb-5">
-                        <input type="hidden" name="action" value="send">
-                        <input type="hidden" name="sub_id" value="<?= $hostSubId ?>">
-                        <div class="p-3 rounded-4 border bg-light d-flex gap-2">
-                           <input type="email" name="email" class="form-control border-0 bg-transparent shadow-none" placeholder="Enter family email..." required>
-                           <button type="submit" class="btn btn-dark rounded-pill px-4 fw-800 smaller">Invite</button>
-                        </div>
-                    </form>
+    <div class="ud-card p-0 overflow-hidden border-0 shadow-soft" style="border-radius:24px; background: #fff;">
+        <div class="row g-0">
+            <!-- Left: Management Panel -->
+            <div class="col-lg-5 p-4 p-xl-5 border-end">
+                <div class="mb-5">
+                    <h3 class="fw-900 text-dark mb-1">Share Member Settings</h3>
+                    <p class="text-muted small">Manage your family collective and invite new members.</p>
+                </div>
 
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <h6 class="smallest text-uppercase fw-800 text-muted opacity-75 letter-spacing-1">Group Members</h6>
+                <!-- Invite Form -->
+                <form action="api/membership_invitations.php" method="POST" class="mb-5">
+                    <input type="hidden" name="action" value="send">
+                    <input type="hidden" name="sub_id" value="<?= $hostSubId ?>">
+                    <div class="p-2 rounded-pill border bg-light d-flex gap-1" style="box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                       <input type="email" name="email" class="form-control border-0 bg-transparent shadow-none px-4" style="font-size:13px;" placeholder="Family member email..." required>
+                       <button type="submit" class="btn btn-dark rounded-pill px-4 fw-800 smaller transition-all hover-scale">Invite</button>
                     </div>
+                </form>
+
+                <div class="mb-3 d-flex justify-content-between align-items-center">
+                    <h6 class="smallest text-uppercase fw-900 text-muted opacity-50 letter-spacing-2">Current Members</h6>
+                    <span class="badge bg-soft-dark text-dark rounded-pill fw-800 px-3"><?= count($groupMembers) ?> / <?= $shareLimit ?></span>
+                </div>
 
                     <?php if (empty($groupMembers)): ?>
                         <div class="ud-empty py-5 border dashed rounded-4">
@@ -747,7 +816,7 @@ include 'views/header.php';
                                     <div class="ms-auto d-flex gap-2">
                                         <div class="p-2 border rounded-3 bg-light text-center" style="min-width: 60px;">
                                             <div class="smallest fw-800 text-opacity-50">BORROWS</div>
-                                            <div class="fw-900 small"><?= $m['stats']['total_b'] ?></div>
+                                            <div class="fw-900 small"><?= $m['stats']['total_b'] ?? 0 ?></div>
                                         </div>
                                         <div class="p-2 border rounded-3 bg-light text-center" style="min-width: 60px;">
                                             <div class="smallest fw-800 text-opacity-50">FINES</div>
@@ -759,8 +828,8 @@ include 'views/header.php';
                                 <div class="activities-scroll-box" style="display: flex; flex-direction: column; gap: 12px;">
                                     <?php 
                                     $allActivities = array_merge(
-                                        array_map(function($i){ $i['act_type'] = 'active'; return $i; }, $m['borrows']),
-                                        array_map(function($i){ $i['act_type'] = 'past'; return $i; }, $m['history'])
+                                        array_map(function($i){ $i['act_type'] = 'active'; return $i; }, $m['borrows'] ?? []),
+                                        array_map(function($i){ $i['act_type'] = 'past'; return $i; }, $m['history'] ?? [])
                                     );
                                     usort($allActivities, function($a, $b){ return strtotime($b['borrowed_at']) - strtotime($a['borrowed_at']); });
                                     
@@ -804,11 +873,13 @@ include 'views/header.php';
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
+                </div>
             </div>
         </div>
-    </div>
+    </div> <!-- end 80% container -->
 </section>
 <?php endif; ?>
+
 
 <?php if (!empty($pendingInvitesForMe)): ?>
 <section class="mb-5 animate__animated animate__fadeIn">
