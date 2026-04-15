@@ -323,7 +323,7 @@ $pageTitle = 'Reset Password - My Library';
                                 text: 'Your new password is set. Redirecting to login...',
                                 confirmButtonColor: '#E07A5F',
                                 timer: 3000,
-                                timerProgressBar: true
+                                timerProgressBar: false
                             }).then(() => {
                                 window.location.href = 'login.php';
                             });

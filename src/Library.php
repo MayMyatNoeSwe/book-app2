@@ -215,7 +215,7 @@ class Library
                 WHERE subscription_id IN (
                     SELECT id FROM user_subscriptions WHERE id = ? OR parent_id = ?
                 ) 
-                AND returned_at IS NULL AND `status` IN ('pending','approved')";
+                AND `status` IN ('pending','approved','return_pending','returned')";
         
         $params = [$rootId, $rootId];
         

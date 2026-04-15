@@ -510,7 +510,7 @@ $pageTitle = 'Register - My Library';
                                 text: 'Welcome to the club! Redirecting to login...',
                                 confirmButtonColor: '#E07A5F',
                                 timer: 3000,
-                                timerProgressBar: true
+                                timerProgressBar: false
                             }).then(() => {
                                 window.location.href = 'login.php';
                             });

@@ -36,7 +36,7 @@ $user = $stmt->fetch();
 $activeSubs = Auth::getSubscriptions();
 $tier = strtolower($user['membership_tier'] ?? 'bronze');
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND status IN ('approved', 'returned', 'return_pending')");
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND status IN ('pending', 'approved', 'return_pending', 'returned')");
 $stmt->execute([$userId]);
 $totalBorrows = $stmt->fetchColumn();
 

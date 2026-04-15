@@ -148,7 +148,7 @@ function displayFlashMessage(): void
                 confirmButtonText: 'OK',
                 confirmButtonColor: '#2e8a40',
                 timer: 5000,
-                timerProgressBar: true,
+                timerProgressBar: false,
                 showClass: {
                     popup: 'animate__animated animate__fadeInDown'
                 },
