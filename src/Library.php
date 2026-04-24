@@ -308,8 +308,44 @@ class Library
     return (float)($stmt->fetchColumn() ?: 0.0);
     }
 
-    public function borrowBook(string $bookId, int $userId): bool
+    public function borrowBook(string $bookId, int $userId, string $plan = 'plan'): bool
     {
+        // Free Plan: use bronze default limits, no subscription
+        if ($plan === 'free') {
+            $freeLimit = (int)getSetting('borrow_limit', 3);
+            $freeDays = (int)getSetting('borrow_duration', 14);
+
+            // Count books borrowed under "free" plan (subscription_id IS NULL)
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id IS NULL AND returned_at IS NULL AND `status` IN ('pending','approved','return_pending')");
+            $stmt->execute([$userId]);
+            $freeUsage = (int)$stmt->fetchColumn();
+
+            if ($freeUsage >= $freeLimit) {
+                return false;
+            }
+
+            // Prevent borrowing the exact same book multiple times
+            if ($this->isCurrentlyBorrowing($userId, $bookId)) {
+                return false;
+            }
+
+            // Check if there's already a pending request for this book
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'pending'");
+            $stmt->execute([$userId, $bookId]);
+            if ((int)$stmt->fetchColumn() > 0) {
+                return false;
+            }
+
+            $book = $this->getBookById($bookId);
+            if (!$book || !$book->isAvailable()) return false;
+
+            $dueDate = date('Y-m-d', strtotime('+' . $freeDays . ' days'));
+            $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`) VALUES (?,NULL,?,?,'pending')");
+            $stmt->execute([$userId, $bookId, $dueDate]);
+            return true;
+        }
+
+        // Plan: use active membership card
         $rules = $this->getMembershipRules($userId);
         $personalLimit = (int)$rules['personal_limit'];
         $groupLimit = (int)$rules['group_limit'];

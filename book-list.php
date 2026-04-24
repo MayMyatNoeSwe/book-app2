@@ -867,6 +867,50 @@ include 'views/header.php';
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-start">
+                <!-- Plan Selector -->
+                <?php if (Auth::check()): ?>
+                <?php
+                    $currentTier = $msRules['tier'] ?? 'bronze';
+                    $isMemberPlan = ($currentTier !== 'bronze');
+                    $freeLimitVal = (int)getSetting('borrow_limit', 3);
+                ?>
+                <div class="d-flex gap-3 mb-3" id="blPlanSelector">
+                    <!-- Free Plan -->
+                    <div class="plan-option flex-fill text-center p-3 rounded-4 <?= !$isMemberPlan ? 'active' : '' ?>" data-plan="free" onclick="blSelectPlan(this)" style="cursor:pointer;position:relative;">
+                        <span class="plan-badge" style="<?= !$isMemberPlan ? '' : 'display:none;' ?>">Selected</span>
+                        <div class="plan-check"><i class="fas fa-check"></i></div>
+                        <div style="width:36px;height:36px;border-radius:50%;background:rgba(107,114,128,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
+                            <i class="fas fa-book" style="color:#6b7280;"></i>
+                        </div>
+                        <div class="fw-800" style="font-size:14px;">Free</div>
+                        <div class="small text-muted mb-1">Pay per borrow</div>
+                        <div class="fw-800" style="color:#d48b71;font-size:16px;">Fee Applies</div>
+                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $freeLimitVal ?></div>
+                    </div>
+                    <!-- Plan -->
+                    <div class="plan-option flex-fill text-center p-3 rounded-4 <?= $isMemberPlan ? 'active' : '' ?>" data-plan="plan" onclick="blSelectPlan(this)" style="cursor:pointer;position:relative;">
+                        <span class="plan-badge" style="<?= $isMemberPlan ? '' : 'display:none;' ?>">Selected</span>
+                        <div class="plan-check"><i class="fas fa-check"></i></div>
+                        <div style="width:36px;height:36px;border-radius:50%;background:rgba(212,139,113,0.12);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
+                            <i class="fas fa-crown" style="color:#d48b71;"></i>
+                        </div>
+                        <div class="fw-800" style="font-size:14px;"><?= ucfirst($currentTier) ?></div>
+                        <div class="small text-muted mb-1">Membership card</div>
+                        <div class="fw-800" style="color:#10b981;font-size:16px;">FREE</div>
+                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $borrowLimit ?></div>
+                    </div>
+                </div>
+                <input type="hidden" id="blBorrowPlan" value="<?= $isMemberPlan ? 'plan' : 'free' ?>">
+                <style>
+                    .plan-option{border:2px solid rgba(0,0,0,0.08);background:#fff;transition:all 0.3s ease;border-radius:16px!important;}
+                    .plan-option:hover{border-color:#d48b71;background:rgba(212,139,113,0.02);}
+                    .plan-option.active{border-color:#d48b71;background:rgba(212,139,113,0.04);box-shadow:0 4px 20px rgba(212,139,113,0.15);}
+                    .plan-option .plan-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#d48b71,#c2664e);color:#fff;font-size:10px;font-weight:800;padding:3px 14px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;z-index:2;}
+                    .plan-option .plan-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;transition:all 0.25s;}
+                    .plan-option.active .plan-check{background:#d48b71;border-color:#d48b71;color:#fff;}
+                </style>
+                <?php endif; ?>
+
                 <div class="p-3 rounded-4 border mb-3" style="background: rgba(224,122,95,0.04);">
                     <div class="d-flex gap-3">
                         <i class="fas fa-info-circle mt-1" style="color: var(--bookhouse-orange);"></i>
@@ -962,7 +1006,8 @@ document.getElementById('confirmBorrow').addEventListener('click', function() {
         form.method = 'POST';
         form.action = 'book-details.php';
         
-        [['id', currentBookId], ['action', 'borrow']].forEach(([name, value]) => {
+        const planVal = document.getElementById('blBorrowPlan')?.value || 'plan';
+        [['id', currentBookId], ['action', 'borrow'], ['borrow_plan', planVal]].forEach(([name, value]) => {
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = name;
@@ -974,6 +1019,12 @@ document.getElementById('confirmBorrow').addEventListener('click', function() {
         form.submit();
     }
 });
+
+function blSelectPlan(el) {
+    document.querySelectorAll('#blPlanSelector .plan-option').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('blBorrowPlan').value = el.dataset.plan;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     // Auto-submit on filter change

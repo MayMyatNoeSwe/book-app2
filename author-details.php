@@ -698,6 +698,46 @@ function buildAuthorUrl($newParams = []) {
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-start">
+                <!-- Plan Selector -->
+                <?php if (Auth::check()): ?>
+                <?php
+                    $currentTier = $msRules['tier'] ?? 'bronze';
+                    $isMemberPlan = ($currentTier !== 'bronze');
+                    $freeLimitVal = (int)getSetting('borrow_limit', 3);
+                ?>
+                <div class="d-flex gap-3 mb-3" id="adPlanSelector">
+                    <!-- Free Plan -->
+                    <div class="ad-plan-opt flex-fill text-center p-3 rounded-4 border <?= !$isMemberPlan ? 'active' : '' ?>" data-plan="free" onclick="adSelectPlan(this)" style="cursor:pointer;transition:all 0.25s;">
+                        <div style="width:36px;height:36px;border-radius:50%;background:rgba(107,114,128,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
+                            <i class="fas fa-book" style="color:#6b7280;"></i>
+                        </div>
+                        <div class="fw-800" style="font-size:14px;">Free</div>
+                        <div class="small text-muted mb-1">Pay per borrow</div>
+                        <div class="fw-800" style="color:#d48b71;font-size:16px;">Fee Applies</div>
+                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $freeLimitVal ?></div>
+                    </div>
+                    <!-- Plan -->
+                    <div class="ad-plan-opt flex-fill text-center p-3 rounded-4 border <?= $isMemberPlan ? 'active' : '' ?>" data-plan="plan" onclick="adSelectPlan(this)" style="cursor:pointer;transition:all 0.25s;position:relative;">
+                        <?php if ($isMemberPlan): ?>
+                        <span class="position-absolute top-0 end-0 translate-middle badge rounded-pill" style="background:#d48b71;font-size:9px;">Active</span>
+                        <?php endif; ?>
+                        <div style="width:36px;height:36px;border-radius:50%;background:rgba(212,139,113,0.12);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
+                            <i class="fas fa-crown" style="color:#d48b71;"></i>
+                        </div>
+                        <div class="fw-800" style="font-size:14px;"><?= ucfirst($currentTier) ?></div>
+                        <div class="small text-muted mb-1">Membership card</div>
+                        <div class="fw-800" style="color:#10b981;font-size:16px;">FREE</div>
+                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $borrowLimit ?></div>
+                    </div>
+                </div>
+                <input type="hidden" id="adBorrowPlan" value="<?= $isMemberPlan ? 'plan' : 'free' ?>">
+                <style>
+                    .ad-plan-opt{border-color:rgba(0,0,0,0.08)!important;background:#fff;}
+                    .ad-plan-opt:hover{border-color:#d48b71!important;}
+                    .ad-plan-opt.active{border-color:#d48b71!important;background:rgba(212,139,113,0.04)!important;box-shadow:0 4px 16px rgba(212,139,113,0.1);}
+                </style>
+                <?php endif; ?>
+
                 <div class="p-3 rounded-4 border mb-3" style="background: rgba(224,122,95,0.04);">
                     <div class="d-flex gap-3">
                         <i class="fas fa-info-circle mt-1" style="color: var(--bookhouse-orange);"></i>
@@ -769,7 +809,8 @@ document.getElementById('confirmBorrow')?.addEventListener('click', function() {
         form.method = 'POST';
         form.action = 'book-details.php';
         
-        [['id', currentBookId], ['action', 'borrow']].forEach(([name, value]) => {
+        const planVal = document.getElementById('adBorrowPlan')?.value || 'plan';
+        [['id', currentBookId], ['action', 'borrow'], ['borrow_plan', planVal]].forEach(([name, value]) => {
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = name;
@@ -781,6 +822,12 @@ document.getElementById('confirmBorrow')?.addEventListener('click', function() {
         form.submit();
     }
 });
+
+function adSelectPlan(el) {
+    document.querySelectorAll('#adPlanSelector .ad-plan-opt').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('adBorrowPlan').value = el.dataset.plan;
+}
 
 function shareAuthor(platform) {
     const url = encodeURIComponent(window.location.href);

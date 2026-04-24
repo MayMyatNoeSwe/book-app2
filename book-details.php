@@ -36,20 +36,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
     
     switch ($action) {
         case 'borrow':
+            $borrowPlan = $_POST['borrow_plan'] ?? 'plan';
             // The library class now handles the multi-card limit check internally in borrowBook
-            if ($library->borrowBook($bookId, $userId)) {
+            if ($library->borrowBook($bookId, $userId, $borrowPlan)) {
                 $message = 'Borrow request submitted! Waiting for admin approval.';
                 $messageType = 'success';
                 $book = $library->getBookById($bookId);
             } else {
                 // Determine why it failed
                 $rules = $library->getMembershipRules($userId);
-                $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND status IN ('pending','approved')");
-                $stmt->execute([$userId, $rules['sub_id']]);
-                $count = (int)$stmt->fetchColumn();
+                if ($borrowPlan === 'free') {
+                    $checkLimit = (int)getSetting('borrow_limit', 3);
+                    $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id IS NULL AND returned_at IS NULL AND status IN ('pending','approved')");
+                    $stmt->execute([$userId]);
+                    $count = (int)$stmt->fetchColumn();
+                } else {
+                    $checkLimit = $rules['limit'];
+                    $stmt = $library->getPdo()->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND subscription_id = ? AND returned_at IS NULL AND status IN ('pending','approved')");
+                    $stmt->execute([$userId, $rules['sub_id']]);
+                    $count = (int)$stmt->fetchColumn();
+                }
                 
-                if ($count >= $rules['limit']) {
-                    $message = "You have reached the maximum borrow limit of {$rules['limit']} books for your active card. Please return a book first or switch to another member card.";
+                if ($count >= $checkLimit) {
+                    $message = "You have reached the maximum borrow limit of {$checkLimit} books for your " . ($borrowPlan === 'free' ? 'free plan' : 'active card') . ". Please return a book first.";
                 } else {
                     $message = 'Unable to borrow this book. You may already have a pending request or it might be unavailable.';
                 }
@@ -840,6 +849,7 @@ include 'views/header.php';
 <!-- Borrow via SweetAlert2 -->
 <form method="POST" id="borrowForm" style="display:none;">
     <input type="hidden" name="action" value="borrow">
+    <input type="hidden" name="borrow_plan" id="borrowPlanInput" value="plan">
 </form>
 
 <script>
@@ -866,24 +876,67 @@ function confirmBorrow() {
         confirmButtonColor: '#d48b71',
     });
     <?php else: ?>
+    const currentTier = <?= json_encode($msRules['tier'] ?? 'bronze') ?>;
+    const isMember = (currentTier !== 'bronze');
+    const tierLabel = <?= json_encode(ucfirst($msRules['tier'] ?: 'Bronze')) ?>;
+    const borrowFee = <?= json_encode(number_format($book->getBorrowPrice())) ?>;
+    const freeBorrowLimit = <?= json_encode((int)getSetting('borrow_limit', 3)) ?>;
+    const planBorrowLimit = <?= $personalLimit ?>;
+    const borrowDuration = <?= $borrowDuration ?>;
+    const borrowFine = <?= $borrowFine ?>;
+    const personalUsage = <?= $personalActiveUsage ?>;
+
     Swal.fire({
-        title: 'Borrow This Book?',
-        html: '<div style="text-align:left;font-size:14px;line-height:1.8;padding:4px 0;">' +
+        title: 'Choose Your Borrowing Plan',
+        html: '<div style="text-align:left;font-size:14px;line-height:1.6;padding:4px 0;">' +
+
+              // ─── Plan Selector ───
+              '<div id="planSelector" style="display:flex;gap:12px;margin-bottom:18px;">' +
+
+              // Free Plan Card
+              '<div class="plan-card" data-plan="free" onclick="selectBorrowPlan(this)" style="flex:1;cursor:pointer;border:2px solid rgba(0,0,0,0.08);border-radius:16px;padding:16px 14px;text-align:center;transition:all 0.25s;background:#fff;">' +
+              '<div style="width:40px;height:40px;border-radius:50%;background:rgba(107,114,128,0.1);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><i class="fas fa-book" style="color:#6b7280;font-size:16px;"></i></div>' +
+              '<div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:2px;">Free</div>' +
+              '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Pay per borrow</div>' +
+              '<div style="font-size:18px;font-weight:800;color:#d48b71;">' + borrowFee + ' <span style="font-size:11px;font-weight:600;color:#9ca3af;">Ks</span></div>' +
+              '<div style="font-size:11px;color:#9ca3af;margin-top:6px;"><i class="fas fa-layer-group me-1"></i>Limit: ' + freeBorrowLimit + ' books</div>' +
+              '</div>' +
+
+              // Member Plan Card
+              '<div class="plan-card' + (isMember ? ' selected' : '') + '" data-plan="plan" onclick="selectBorrowPlan(this)" style="flex:1;cursor:pointer;border:2px solid ' + (isMember ? '#d48b71' : 'rgba(0,0,0,0.08)') + ';border-radius:16px;padding:16px 14px;text-align:center;transition:all 0.25s;background:' + (isMember ? 'rgba(212,139,113,0.04)' : '#fff') + ';position:relative;">' +
+              (isMember ? '<div style="position:absolute;top:-9px;right:12px;background:#d48b71;color:#fff;font-size:9px;font-weight:800;padding:2px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;">Active</div>' : '') +
+              '<div style="width:40px;height:40px;border-radius:50%;background:rgba(212,139,113,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><i class="fas fa-crown" style="color:#d48b71;font-size:16px;"></i></div>' +
+              '<div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:2px;">' + tierLabel + '</div>' +
+              '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Membership card</div>' +
+              '<div style="font-size:18px;font-weight:800;color:#10b981;">FREE</div>' +
+              '<div style="font-size:11px;color:#9ca3af;margin-top:6px;"><i class="fas fa-layer-group me-1"></i>Limit: ' + planBorrowLimit + ' books</div>' +
+              '</div>' +
+
+              '</div>' +
+
+              // ─── Policy ───
               '<div style="background:rgba(212,139,113,0.08);border-radius:12px;padding:14px 16px;margin-bottom:16px;">' +
               '<div style="font-weight:700;margin-bottom:4px;color:#d48b71;"><i class="fas fa-info-circle me-1"></i> Borrowing Policy</div>' +
-              '<div style="color:#6b7280;">Return within <strong><?= $borrowDuration ?> days</strong>. Late returns incur <strong><?= number_format($borrowFine) ?> Ks/day</strong> penalty.</div>' +
+              '<div style="color:#6b7280;">Return within <strong>' + borrowDuration + ' days</strong>. Late returns incur <strong>' + borrowFine.toLocaleString() + ' Ks/day</strong> penalty.</div>' +
               '</div>' +
+
+              // ─── Summary ───
               '<div style="display:flex;flex-direction:column;gap:6px;">' +
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
-              '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Your Active Books:</strong> <?= $personalActiveUsage ?> / <?= $personalLimit ?></div>' +
-              '<div><i class="fas fa-calendar-day me-2" style="color:#f59e0b;width:18px;"></i><strong>Duration:</strong> <?= $borrowDuration ?> Days</div>' +
+              '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Your Active Books:</strong> ' + personalUsage + ' / ' + (isMember ? planBorrowLimit : freeBorrowLimit) + '</div>' +
+              '<div><i class="fas fa-calendar-day me-2" style="color:#f59e0b;width:18px;"></i><strong>Duration:</strong> ' + borrowDuration + ' Days</div>' +
               '</div>' +
-              '<div style="margin-top:12px;background:#fef3c7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;">' +
-              '<i class="fas fa-shield-alt me-1"></i> Card used: <strong>' + <?= json_encode(ucfirst($msRules['tier'] ?: 'Bronze')) ?> + ' Member</strong>' +
-              '</div>' +
-              '<div style="margin-top:8px;background:#e0f2fe;border-radius:8px;padding:10px 12px;font-size:12px;color:#0369a1;">' +
+
+              '<div style="margin-top:12px;background:#e0f2fe;border-radius:8px;padding:10px 12px;font-size:12px;color:#0369a1;">' +
               '<i class="fas fa-info-circle me-1"></i> Your request will be reviewed and approved by our admin team.' +
               '</div>' +
+
+              // ─── Inline style for plan cards ───
+              '<style>' +
+              '.plan-card:hover{border-color:#d48b71!important;background:rgba(212,139,113,0.03)!important;}' +
+              '.plan-card.selected{border-color:#d48b71!important;background:rgba(212,139,113,0.04)!important;box-shadow:0 4px 16px rgba(212,139,113,0.12);}' +
+              '</style>' +
+
               '</div>',
         icon: 'question',
         iconColor: '#d48b71',
@@ -895,13 +948,40 @@ function confirmBorrow() {
         reverseButtons: true,
         customClass: { popup: 'swal-borrow-popup', confirmButton: 'swal-confirm-btn' },
         showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
-        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' }
+        hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' },
+        didOpen: () => {
+            // Default selection
+            if (isMember) {
+                document.getElementById('borrowPlanInput').value = 'plan';
+            } else {
+                // Auto-select free for bronze users
+                const freeCard = document.querySelector('.plan-card[data-plan="free"]');
+                if (freeCard) selectBorrowPlan(freeCard);
+            }
+        }
     }).then((result) => {
         if (result.isConfirmed) {
+            const selected = document.querySelector('.plan-card.selected');
+            document.getElementById('borrowPlanInput').value = selected ? selected.dataset.plan : 'plan';
             document.getElementById('borrowForm').submit();
         }
     });
     <?php endif; ?>
+}
+
+// ─── Plan Selector Helper ───
+function selectBorrowPlan(el) {
+    document.querySelectorAll('.plan-card').forEach(c => {
+        c.classList.remove('selected');
+        c.style.borderColor = 'rgba(0,0,0,0.08)';
+        c.style.background = '#fff';
+        c.style.boxShadow = 'none';
+    });
+    el.classList.add('selected');
+    el.style.borderColor = '#d48b71';
+    el.style.background = 'rgba(212,139,113,0.04)';
+    el.style.boxShadow = '0 4px 16px rgba(212,139,113,0.12)';
+    document.getElementById('borrowPlanInput').value = el.dataset.plan;
 }
 
 // ─── Show borrow result alert on page load ───
