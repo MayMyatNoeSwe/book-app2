@@ -53,6 +53,32 @@ try {
     $dsn = "mysql:host={$config['host']};dbname={$config['dbname']};charset={$config['charset']}";
     $pdo = new \PDO($dsn, $config['username'], $config['password'], $config['options']);
 
+    // Check if user already has a pending request for this tier
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM membership_requests WHERE user_id = ? AND tier = ? AND status = 'pending'");
+    $stmt->execute([$userId, $tier]);
+    if ($stmt->fetchColumn() > 0) {
+        echo json_encode(['success' => false, 'message' => 'You already have a pending request for ' . ucfirst($tier) . ' membership.']);
+        exit;
+    }
+
+    // Check if user already has an active subscription for this tier (owned OR shared)
+    $stmt = $pdo->prepare("
+        SELECT us.id FROM user_subscriptions us 
+        LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+        WHERE us.user_id = ? AND us.tier = ? 
+        AND (
+            (us.parent_id IS NULL AND us.expires_at > NOW()) 
+            OR 
+            (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+        )
+        LIMIT 1
+    ");
+    $stmt->execute([$userId, $tier]);
+    if ($stmt->fetchColumn()) {
+        echo json_encode(['success' => false, 'message' => 'You already have an active ' . ucfirst($tier) . ' membership card.']);
+        exit;
+    }
+
     $stmt = $pdo->prepare("INSERT INTO membership_requests (user_id, tier, payment_method, payment_screenshot, status) VALUES (?, ?, ?, ?, 'pending')");
     $stmt->execute([$userId, $tier, $method, $screenshotPath]);
 

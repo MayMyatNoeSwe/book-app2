@@ -311,16 +311,19 @@ include 'views/header.php';
                 <div class="tier-icon" style="background: <?= $tier['gradient'] ?>"><i class="fas fa-crown"></i></div>
                 <h3 class="tier-name"><?= $tier['name'] ?></h3>
                 
+                <?php if ($parentId): ?>
+                    <div class="badge bg-soft-primary text-primary rounded-pill px-3 mb-2 small w-fit">
+                        <i class="fas fa-user-friends me-1"></i> Shared Member
+                    </div>
+                <?php endif; ?>
+                
                 <?php if ($isHost && in_array($key, ['gold', 'platinum'])): ?>
                     <div class="badge bg-soft-warning text-warning rounded-pill px-3 mb-2 small w-fit">
                         <i class="fas fa-crown me-1"></i> Group Host
                     </div>
                 <?php endif; ?>
 
-                
-                <button class="btn btn-sm text-danger position-absolute top-0 end-0 m-3" onclick="removeCard(<?= $card['id'] ?>)" title="Remove Card">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
+
 
                 <div class="tier-price"><?= number_format($tier['price']) ?> <span>Ks/mo</span></div>
                 <ul class="benefit-list">
@@ -329,10 +332,10 @@ include 'views/header.php';
                     <?php endforeach; ?>
                 </ul>
                 <div class="d-flex flex-column gap-2 mt-auto">
-                    <?php if ($parentId): ?>
-                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
+                    <?php if ($isPrimary): ?>
+                        <button class="btn btn-tier btn-tier-success w-100" disabled>Active Card</button>
                     <?php else: ?>
-                        <button class="btn btn-tier btn-tier-primary w-100" onclick="upgradeTier('<?= $key ?>', '<?= $tier['name'] ?>', <?= $tier['price'] ?>)">Buy Now</button>
+                        <button class="btn btn-tier btn-tier-outline w-100" onclick="setActiveCard(<?= $card['id'] ?>)">Set as Active</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -341,6 +344,7 @@ include 'views/header.php';
 
         <!-- NEW OPTIONS -->
         <?php 
+        // Skip tiers the user already owns OR has via sharing
         $ownedTiers = array_unique(array_column($allSubCards, 'tier'));
         foreach (['silver', 'gold', 'platinum'] as $key): 
             if (in_array($key, $ownedTiers)) continue;

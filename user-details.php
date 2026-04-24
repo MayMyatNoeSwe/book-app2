@@ -141,6 +141,11 @@ $rules = $lib->getMembershipRules($userId);
 $planLimit = $rules['limit'] ?? 0;
 $groupPoolLimit = $rules['group_limit'] ?? 0;
 $shareLimit = $rules['share_limit'] ?? 5;
+
+// Calculate total borrow limit: default free (Bronze) + active membership card
+$freeBorrowLimit = (int)getSetting('borrow_limit', 3);
+$membershipBorrowLimit = $activeSubId ? (int)getSetting($tier . '_borrow_limit', 0) : 0;
+$totalBorrowLimit = $freeBorrowLimit + $membershipBorrowLimit;
 $groupAggregate = [
     'active' => $user['active_subscription_id'] ? $lib->getGroupUsageCount($user['active_subscription_id']) : $myBorrows
 ];
@@ -635,6 +640,14 @@ include 'views/header.php';
             <div class="flex-grow-1 border-bottom opacity-10"></div>
         </div>
         <div class="row g-3 g-lg-4">
+            <div class="col-4 col-lg-2">
+                <div class="ud-stat-card border-top border-success border-4 shadow-sm h-100 bg-white">
+                    <div class="ud-stat-icon mint mb-2"><i class="fas fa-books text-opacity-75"></i></div>
+                    <div class="ud-stat-num mb-1"><?= $totalBorrowLimit ?></div>
+                    <div class="ud-stat-lbl text-muted fw-700">Borrow Limit</div>
+                    <div class="smallest text-muted opacity-75 mt-1" style="font-size:9px;"><?= $freeBorrowLimit ?> Free<?= $membershipBorrowLimit ? ' + ' . $membershipBorrowLimit . ' ' . ucfirst($tier) : '' ?></div>
+                </div>
+            </div>
             <div class="col-4 col-lg-2">
                 <div class="ud-stat-card border-top border-orange border-4 shadow-sm h-100 bg-white">
                     <div class="ud-stat-icon orange mb-2"><i class="fas fa-book-open text-opacity-75"></i></div>

@@ -29,6 +29,24 @@ try {
 
     $userId = Auth::id();
     $lib = new \App\Library($pdo);
+
+    // Check if user already has an active subscription for this tier (owned OR shared)
+    $stmt = $pdo->prepare("
+        SELECT us.id FROM user_subscriptions us 
+        LEFT JOIN user_subscriptions parent ON us.parent_id = parent.id
+        WHERE us.user_id = ? AND us.tier = ? 
+        AND (
+            (us.parent_id IS NULL AND us.expires_at > NOW()) 
+            OR 
+            (us.parent_id IS NOT NULL AND parent.expires_at > NOW())
+        )
+        LIMIT 1
+    ");
+    $stmt->execute([$userId, $newTier]);
+    if ($stmt->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'You already have an active ' . ucfirst($newTier) . ' membership card.']);
+        exit;
+    }
     
     // Create a 30-day subscription for the new tier
     $stmt = $pdo->prepare("INSERT INTO user_subscriptions (user_id, is_host, tier, expires_at) VALUES (?, 1, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH))");

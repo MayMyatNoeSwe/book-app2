@@ -625,6 +625,25 @@ class Library
                 }
             }
 
+            // 4b. Prevent duplicate subscription
+            if ($isHost || !$parentId) {
+                // Check if user already has an active own subscription for this tier
+                $stmt = $this->pdo->prepare("SELECT id FROM user_subscriptions WHERE user_id = ? AND tier = ? AND parent_id IS NULL AND expires_at > NOW() LIMIT 1");
+                $stmt->execute([$userId, $tier]);
+                if ($stmt->fetch()) {
+                    if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+                    return ['success' => false, 'message' => 'You already have an active ' . ucfirst($tier) . ' membership card.'];
+                }
+            } else {
+                // Check if user already has an active shared subscription under the same parent
+                $stmt = $this->pdo->prepare("SELECT id FROM user_subscriptions WHERE user_id = ? AND parent_id = ? AND expires_at > NOW() LIMIT 1");
+                $stmt->execute([$userId, $parentId]);
+                if ($stmt->fetch()) {
+                    if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+                    return ['success' => false, 'message' => 'You already have an active shared ' . ucfirst($tier) . ' membership.'];
+                }
+            }
+
             // 5. Grant Subscription
             $stmt = $this->pdo->prepare("INSERT INTO user_subscriptions (user_id, parent_id, is_host, tier, expires_at) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$userId, $parentId, $isHost ? 1 : 0, $tier, $expiresAt]);
