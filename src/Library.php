@@ -308,7 +308,7 @@ class Library
     return (float)($stmt->fetchColumn() ?: 0.0);
     }
 
-    public function borrowBook(string $bookId, int $userId, string $plan = 'plan'): bool
+    public function borrowBook(string $bookId, int $userId, string $plan = 'plan'): string|bool
     {
         // Free Plan: use bronze default limits, no subscription
         if ($plan === 'free') {
@@ -320,9 +320,12 @@ class Library
             $stmt->execute([$userId]);
             $freeUsage = (int)$stmt->fetchColumn();
 
+            // Limit check removed for 'free' plan to allow pay-per-borrow overflow
+            /*
             if ($freeUsage >= $freeLimit) {
                 return false;
             }
+            */
 
             // Prevent borrowing the exact same book multiple times
             if ($this->isCurrentlyBorrowing($userId, $bookId)) {
@@ -339,13 +342,27 @@ class Library
             $book = $this->getBookById($bookId);
             if (!$book || !$book->isAvailable()) return false;
 
+            $isFreeToken = ($freeUsage < $freeLimit);
+            $status = $isFreeToken ? 'approved' : 'pending';
+            $approvedAtSql = $isFreeToken ? ', approved_at = NOW()' : '';
+
+            $borrowFee = $isFreeToken ? 0 : $book->getBorrowPrice();
             $dueDate = date('Y-m-d', strtotime('+' . $freeDays . ' days'));
-            $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`) VALUES (?,NULL,?,?,'pending')");
-            $stmt->execute([$userId, $bookId, $dueDate]);
-            return true;
+            $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`, borrow_fee) VALUES (?,NULL,?,?,?,'{$borrowFee}')");
+            $stmt->execute([$userId, $bookId, $dueDate, $status]);
+            $borrowId = $this->pdo->lastInsertId();
+
+            if ($isFreeToken) {
+                // For auto-approved books, we must also update the book's availability immediately
+                $book->borrowCopy();
+                $this->updateBook($book);
+                $this->pdo->query("UPDATE borrowing_history SET approved_at = NOW() WHERE id = $borrowId");
+            }
+            
+            return $status;
         }
 
-        // Plan: use active membership card
+        // Plan: use active membership card (Auto-accept since membership is essentially "pre-paid tokens")
         $rules = $this->getMembershipRules($userId);
         $personalLimit = (int)$rules['personal_limit'];
         $groupLimit = (int)$rules['group_limit'];
@@ -378,9 +395,16 @@ class Library
         if (!$book || !$book->isAvailable()) return false;
 
         $dueDate = date('Y-m-d', strtotime('+' . $rules['days'] . ' days'));
-        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`) VALUES (?,?,?,?,'pending')");
+        
+        // Members are auto-approved, fee is 0
+        $stmt = $this->pdo->prepare("INSERT INTO borrowing_history(user_id, subscription_id, book_id, due_date, `status`, approved_at, borrow_fee) VALUES (?,?,?,?,'approved', NOW(), 0)");
         $stmt->execute([$userId, $rules['sub_id'], $bookId, $dueDate]);
-        return true;
+        
+        // Update inventory
+        $book->borrowCopy();
+        $this->updateBook($book);
+
+        return 'approved';
     }
 
     // Admin approves a borrow request
@@ -400,8 +424,8 @@ class Library
         $stmt->execute([$dueDate, $borrowId]);
         $this->updateBook($book);
 
-        // Record transaction if not a subscription borrow
-        $fee = (empty($record['subscription_id'])) ? $book->getBorrowPrice() : 0;
+        $fee = $record['borrow_fee'];
+        
         if ($fee > 0) {
             $this->addTransaction('income', 'borrow_fee', $fee, "Borrow: {$book->getTitle()} by user #{$record['user_id']}", $borrowId, 'borrowing_history', $record['user_id']);
         }
@@ -471,10 +495,15 @@ class Library
     // Get borrow requests for admin
     public function getBorrowRequests(string $status = 'all', int $limit = 50, int $offset = 0): array
     {
-        $sql = "SELECT bh.*, u.username, u.email, b.title, b.author, b.cover_image, b.category, b.borrow_price
+        $sql = "SELECT bh.*, u.username, u.email, u.active_subscription_id, b.title, b.author, b.cover_image, b.category, b.borrow_price, 
+                us.tier as borrow_tier,
+                u_active_sub.tier as user_tier,
+                COALESCE(us.tier, u_active_sub.tier) as subscription_tier
                 FROM borrowing_history bh
                 JOIN users u ON bh.user_id = u.id
-                JOIN books b ON bh.book_id = b.id";
+                JOIN books b ON bh.book_id = b.id
+                LEFT JOIN user_subscriptions us ON bh.subscription_id = us.id
+                LEFT JOIN user_subscriptions u_active_sub ON u.active_subscription_id = u_active_sub.id";
         $params = [];
         
         if ($status !== 'all') {

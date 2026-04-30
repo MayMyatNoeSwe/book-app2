@@ -81,8 +81,22 @@ if (Auth::check()) {
     $borrowLimit = (int)$msRules['personal_limit'];
     $groupLimit = (int)$msRules['group_limit'];
 
-    $personalActiveUsage = $library->getGroupUsageCount($activeSubId, $userId);
-    $groupPoolUsage = $library->getGroupUsageCount($activeSubId);
+    $membershipUsage = 0;
+    if (!empty($activeSubId)) {
+        $membershipUsage = $library->getGroupUsageCount($activeSubId, $userId);
+    }
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND status IN ('pending', 'approved', 'return_pending') AND subscription_id IS NULL");
+    $stmt->execute([$userId]);
+    $freeUsage = (int)$stmt->fetchColumn();
+    $freeBorrowLimit = (int)getSetting('borrow_limit', 3);
+    
+    // Set initial display variables
+    $isMemberPlan = ($msRules['tier'] !== 'bronze');
+    $personalActiveUsage = $isMemberPlan ? $membershipUsage : $freeUsage;
+    $borrowLimit = $isMemberPlan ? (int)$msRules['personal_limit'] : $freeBorrowLimit;
+    $groupPoolUsage = $membershipUsage; // Group pool is only for members
+    $groupLimit = (int)$msRules['group_limit'];
 }
 
 include 'views/header.php';
@@ -877,19 +891,24 @@ include 'views/header.php';
                 <div class="d-flex gap-3 mb-3" id="blPlanSelector">
                     <!-- Free Plan -->
                     <div class="plan-option flex-fill text-center p-3 rounded-4 <?= !$isMemberPlan ? 'active' : '' ?>" data-plan="free" onclick="blSelectPlan(this)" style="cursor:pointer;position:relative;">
-                        <span class="plan-badge" style="<?= !$isMemberPlan ? '' : 'display:none;' ?>">Selected</span>
+                        <span class="plan-badge">Selected</span>
                         <div class="plan-check"><i class="fas fa-check"></i></div>
                         <div style="width:36px;height:36px;border-radius:50%;background:rgba(107,114,128,0.1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
                             <i class="fas fa-book" style="color:#6b7280;"></i>
                         </div>
                         <div class="fw-800" style="font-size:14px;">Free</div>
                         <div class="small text-muted mb-1">Pay per borrow</div>
-                        <div class="fw-800" style="color:#d48b71;font-size:16px;">Fee Applies</div>
-                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $freeLimitVal ?></div>
+                        <?php 
+                            $isFreeToken = ($freeUsage < $freeLimitVal);
+                            $showFree = ($isMemberPlan || $isFreeToken);
+                        ?>
+                        <div class="fw-800" style="color:<?= $showFree ? '#10b981' : '#d48b71' ?>;font-size:16px;"><?= $showFree ? 'FREE' : 'Fee Applies' ?></div>
+                        <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Free Limit: <?= $freeLimitVal ?></div>
                     </div>
+                    <?php if ($isMemberPlan): ?>
                     <!-- Plan -->
                     <div class="plan-option flex-fill text-center p-3 rounded-4 <?= $isMemberPlan ? 'active' : '' ?>" data-plan="plan" onclick="blSelectPlan(this)" style="cursor:pointer;position:relative;">
-                        <span class="plan-badge" style="<?= $isMemberPlan ? '' : 'display:none;' ?>">Selected</span>
+                        <span class="plan-badge">Selected</span>
                         <div class="plan-check"><i class="fas fa-check"></i></div>
                         <div style="width:36px;height:36px;border-radius:50%;background:rgba(212,139,113,0.12);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;">
                             <i class="fas fa-crown" style="color:#d48b71;"></i>
@@ -899,13 +918,15 @@ include 'views/header.php';
                         <div class="fw-800" style="color:#10b981;font-size:16px;">FREE</div>
                         <div class="smallest text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Limit: <?= $borrowLimit ?></div>
                     </div>
+                    <?php endif; ?>
                 </div>
                 <input type="hidden" id="blBorrowPlan" value="<?= $isMemberPlan ? 'plan' : 'free' ?>">
                 <style>
                     .plan-option{border:2px solid rgba(0,0,0,0.08);background:#fff;transition:all 0.3s ease;border-radius:16px!important;}
                     .plan-option:hover{border-color:#d48b71;background:rgba(212,139,113,0.02);}
                     .plan-option.active{border-color:#d48b71;background:rgba(212,139,113,0.04);box-shadow:0 4px 20px rgba(212,139,113,0.15);}
-                    .plan-option .plan-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#d48b71,#c2664e);color:#fff;font-size:10px;font-weight:800;padding:3px 14px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;z-index:2;}
+                    .plan-option .plan-badge{display:none;position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#d48b71,#c2664e);color:#fff;font-size:10px;font-weight:800;padding:3px 14px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;z-index:2;}
+                    .plan-option.active .plan-badge{display:block;}
                     .plan-option .plan-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;transition:all 0.25s;}
                     .plan-option.active .plan-check{background:#d48b71;border-color:#d48b71;color:#fff;}
                 </style>
@@ -927,7 +948,7 @@ include 'views/header.php';
                     <h6 class="fw-800 mb-3" style="font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 8px;">Your Borrowing Summary</h6>
                     <ul class="list-unstyled mb-0" style="font-size: 14px; color: var(--bookhouse-text); line-height: 1.8;">
                         <li><i class="fas fa-calendar-day text-success me-2"></i><strong>Duration:</strong> 14 Days</li>
-                        <li><i class="fas fa-user-check text-primary me-2"></i><strong>Your Active Books:</strong> <?= $personalActiveUsage ?> / <?= $borrowLimit ?></li>
+                        <li><i class="fas fa-user-check text-primary me-2"></i><strong>Your Active Books:</strong> <span id="blActiveBooksSummary"><?= $personalActiveUsage ?> / <?= $borrowLimit ?></span></li>
                         <?php if ($personalActiveUsage >= $borrowLimit && $groupPoolUsage < $groupLimit): ?>
                             <li class="text-danger small mt-1 animate__animated animate__headShake">
                                 <i class="fas fa-info-circle me-1"></i> You have reached your individual limit.
@@ -937,17 +958,16 @@ include 'views/header.php';
                 </div>
                 <?php endif; ?>
 
-                <?php if (Auth::check() && ($personalActiveUsage >= $borrowLimit || $groupPoolUsage >= $groupLimit)): ?>
-                    <p class="fw-700 text-center mb-0 text-danger" style="font-size: 16px;"><i class="fas fa-times-circle me-1"></i>Limit Reached</p>
-                <?php else: ?>
-                    <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
-                <?php endif; ?>
+
+
+                <p class="fw-700 text-center mb-0" style="color: var(--bookhouse-text); font-size: 16px;">Ready to proceed?</p>
+
             </div>
             <div class="modal-footer flex-column gap-2 text-center">
-                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;" <?= (Auth::check() && ($personalActiveUsage >= $borrowLimit || $groupPoolUsage >= $groupLimit)) ? 'disabled' : '' ?>>
+                <button type="button" class="btn w-100 py-3 fw-800 text-white rounded-pill" id="confirmBorrow" style="background: var(--bookhouse-orange); font-size: 15px;">
                     <i class="fas fa-check me-2"></i>Confirm & Borrow
                 </button>
-                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal"><?= (Auth::check() && ($personalActiveUsage >= $borrowLimit || $groupPoolUsage >= $groupLimit)) ? 'Close' : 'Maybe later' ?></button>
+                <button type="button" class="btn btn-link text-muted fw-600 text-decoration-none" data-bs-dismiss="modal">Maybe later</button>
             </div>
         </div>
     </div>
@@ -1021,9 +1041,32 @@ document.getElementById('confirmBorrow').addEventListener('click', function() {
 });
 
 function blSelectPlan(el) {
-    document.querySelectorAll('#blPlanSelector .plan-option').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.plan-option').forEach(opt => opt.classList.remove('active'));
     el.classList.add('active');
     document.getElementById('blBorrowPlan').value = el.dataset.plan;
+
+    const freeLimit = <?= $freeBorrowLimit ?>;
+    const membershipLimit = <?= $borrowLimit ?>;
+    const freeUsage = <?= $freeUsage ?>;
+    const membershipUsage = <?= $membershipUsage ?>;
+    const groupLimit = <?= $groupLimit ?>;
+    const groupUsage = <?= $groupPoolUsage ?? 0 ?>;
+
+    const limit = el.dataset.plan === 'free' ? freeLimit : membershipLimit;
+    const usage = el.dataset.plan === 'free' ? freeUsage : membershipUsage;
+
+    let summaryEl = document.getElementById('blActiveBooksSummary');
+    if (summaryEl) {
+        summaryEl.textContent = usage + ' / ' + limit;
+    }
+
+    let btn = document.getElementById('confirmBorrow');
+    if (btn) {
+        // Only disable if the SELECTED plan is 'plan' AND it is at its limit
+        // Free plan (pay-per-borrow) has NO limit per user request
+        const isLimitReached = (el.dataset.plan === 'plan' && (usage >= limit || groupUsage >= groupLimit));
+        btn.disabled = isLimitReached;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

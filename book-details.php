@@ -38,8 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
         case 'borrow':
             $borrowPlan = $_POST['borrow_plan'] ?? 'plan';
             // The library class now handles the multi-card limit check internally in borrowBook
-            if ($library->borrowBook($bookId, $userId, $borrowPlan)) {
-                $message = 'Borrow request submitted! Waiting for admin approval.';
+            $result = $library->borrowBook($bookId, $userId, $borrowPlan);
+            if ($result) {
+                $message = ($result === 'approved') 
+                    ? 'Borrow successful! You can now access your book.' 
+                    : 'Borrow request submitted! Waiting for admin approval.';
                 $messageType = 'success';
                 $book = $library->getBookById($bookId);
             } else {
@@ -57,10 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && Auth::check()) {
                     $count = (int)$stmt->fetchColumn();
                 }
                 
-                if ($count >= $checkLimit) {
-                    $message = "You have reached the maximum borrow limit of {$checkLimit} books for your " . ($borrowPlan === 'free' ? 'free plan' : 'active card') . ". Please return a book first.";
+                if ($borrowPlan === 'plan' && $count >= $checkLimit) {
+                    $message = "You have reached the maximum borrow limit of {$checkLimit} books for your active card. Please return a book first.";
                 } else {
-                    $message = 'Unable to borrow this book. You may already have a pending request or it might be unavailable.';
+                    $message = 'Unable to borrow this book. You may already have a pending request, reached your plan limit, or the book is unavailable.';
                 }
                 $messageType = 'error';
             }
@@ -154,12 +157,17 @@ if (Auth::check()) {
     $stmt->execute([$userId]);
     $hasBorrowedBefore = $stmt->fetchColumn() > 0;
     
-    // Count usage following the same logic as Library::borrowBook
-    $personalActiveUsage = $library->getGroupUsageCount($activeSubId, $userId); // Active books (at home)
-    $groupPoolUsage = $library->getGroupUsageCount($activeSubId);               // Pool usage (at home)
+    // Count usage for BOTH plans
+    // 1. Membership Plan Usage
+    $membershipUsage = 0;
+    if (!empty($activeSubId)) {
+        $membershipUsage = $library->getGroupUsageCount($activeSubId, $userId);
+    }
     
-    // Check if limit reached (either personal active or group pool)
-    $isLimitReached = ($personalActiveUsage >= $personalLimit) || ($groupPoolUsage >= $groupLimit);
+    // 2. Free Plan Usage (Pay-per-borrow)
+    $stmt2 = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND returned_at IS NULL AND status IN ('pending', 'approved', 'return_pending') AND subscription_id IS NULL");
+    $stmt2->execute([$userId]);
+    $freeUsage = (int)$stmt2->fetchColumn();
 
     // Check if return is pending for this book
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM borrowing_history WHERE user_id = ? AND book_id = ? AND `status` = 'return_pending'");
@@ -860,21 +868,8 @@ function borrowLoginAlert() {
 
 // ─── Borrow Confirmation Alert ───
 function confirmBorrow() {
-    <?php if (Auth::check() && $isLimitReached): ?>
-    Swal.fire({
-        icon: 'error',
-        title: 'Borrow Limit Reached',
-        html: '<div style="font-size:15px;line-height:1.7;">' +
-              <?php if ($personalActiveUsage >= $personalLimit): ?>
-                'You have reached your <strong>personal active limit</strong> of <?= $personalLimit ?> books at home.<br>' +
-              <?php else: ?>
-                'Your family group has reached the <strong>total pool quota</strong> of <?= $groupLimit ?> books for this plan.<br>' +
-              <?php endif; ?>
-              'Please return some books or contact the host to borrow more.' +
-              '</div>',
-        confirmButtonText: 'Got it',
-        confirmButtonColor: '#d48b71',
-    });
+    <?php if (false): ?>
+    // Blocking alert removed per user request to allow pay-per-borrow when limit reached
     <?php else: ?>
     const currentTier = <?= json_encode($msRules['tier'] ?? 'bronze') ?>;
     const isMember = (currentTier !== 'bronze');
@@ -884,7 +879,14 @@ function confirmBorrow() {
     const planBorrowLimit = <?= $personalLimit ?>;
     const borrowDuration = <?= $borrowDuration ?>;
     const borrowFine = <?= $borrowFine ?>;
-    const personalUsage = <?= $personalActiveUsage ?>;
+    
+    const freeUsage = <?= $freeUsage ?>;
+    const membershipUsage = <?= $membershipUsage ?>;
+    const groupLimit = <?= $groupLimit ?>;
+    const groupUsage = <?= $groupPoolUsage ?? 0 ?>;
+
+    const isPlanLimitReached = (membershipUsage >= planBorrowLimit) || (groupUsage >= groupLimit);
+    const isFreeLimitReached = (freeUsage >= freeBorrowLimit);
 
     Swal.fire({
         title: 'Choose Your Borrowing Plan',
@@ -894,23 +896,27 @@ function confirmBorrow() {
               '<div id="planSelector" style="display:flex;gap:12px;margin-bottom:18px;">' +
 
               // Free Plan Card
-              '<div class="plan-card" data-plan="free" onclick="selectBorrowPlan(this)" style="flex:1;cursor:pointer;border:2px solid rgba(0,0,0,0.08);border-radius:16px;padding:16px 14px;text-align:center;transition:all 0.25s;background:#fff;">' +
+              '<div class="plan-card' + (!isMember ? ' selected' : '') + '" data-plan="free" onclick="selectBorrowPlan(this)">' +
+              '<span class="plan-badge">Selected</span>' +
+              '<div class="plan-check"><i class="fas fa-check"></i></div>' +
               '<div style="width:40px;height:40px;border-radius:50%;background:rgba(107,114,128,0.1);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><i class="fas fa-book" style="color:#6b7280;font-size:16px;"></i></div>' +
-              '<div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:2px;">Free</div>' +
-              '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Pay per borrow</div>' +
-              '<div style="font-size:18px;font-weight:800;color:#d48b71;">' + borrowFee + ' <span style="font-size:11px;font-weight:600;color:#9ca3af;">Ks</span></div>' +
-              '<div style="font-size:11px;color:#9ca3af;margin-top:6px;"><i class="fas fa-layer-group me-1"></i>Limit: ' + freeBorrowLimit + ' books</div>' +
+              '<div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:2px;">Free Plan</div>' +
+              '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Tokens or Pay-per-borrow</div>' +
+              '<div style="font-size:18px;font-weight:800;color:' + (isMember || freeUsage < freeBorrowLimit ? '#10b981' : '#d48b71') + ';">' + (isMember || freeUsage < freeBorrowLimit ? 'FREE' : borrowFee + ' <span style="font-size:11px;font-weight:600;color:#9ca3af;">Ks</span>') + '</div>' +
+              '<div style="font-size:11px;color:#9ca3af;margin-top:6px;"><i class="fas fa-layer-group me-1"></i>Free Limit: ' + freeBorrowLimit + ' books</div>' +
               '</div>' +
 
+              (isMember ? 
               // Member Plan Card
-              '<div class="plan-card' + (isMember ? ' selected' : '') + '" data-plan="plan" onclick="selectBorrowPlan(this)" style="flex:1;cursor:pointer;border:2px solid ' + (isMember ? '#d48b71' : 'rgba(0,0,0,0.08)') + ';border-radius:16px;padding:16px 14px;text-align:center;transition:all 0.25s;background:' + (isMember ? 'rgba(212,139,113,0.04)' : '#fff') + ';position:relative;">' +
-              (isMember ? '<div style="position:absolute;top:-9px;right:12px;background:#d48b71;color:#fff;font-size:9px;font-weight:800;padding:2px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;">Active</div>' : '') +
+              '<div class="plan-card' + (isMember && !isPlanLimitReached ? ' selected' : '') + (isPlanLimitReached ? ' disabled' : '') + '" data-plan="plan" ' + (isPlanLimitReached ? '' : 'onclick="selectBorrowPlan(this)"') + '>' +
+              '<span class="plan-badge">Selected</span>' +
+              '<div class="plan-check"><i class="fas fa-check"></i></div>' +
               '<div style="width:40px;height:40px;border-radius:50%;background:rgba(212,139,113,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><i class="fas fa-crown" style="color:#d48b71;font-size:16px;"></i></div>' +
               '<div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:2px;">' + tierLabel + '</div>' +
               '<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Membership card</div>' +
               '<div style="font-size:18px;font-weight:800;color:#10b981;">FREE</div>' +
-              '<div style="font-size:11px;color:#9ca3af;margin-top:6px;"><i class="fas fa-layer-group me-1"></i>Limit: ' + planBorrowLimit + ' books</div>' +
-              '</div>' +
+              '<div style="font-size:11px;color:' + (isPlanLimitReached ? '#ef4444' : '#9ca3af') + ';margin-top:6px;"><i class="fas fa-layer-group me-1"></i>' + (isPlanLimitReached ? 'Limit Reached' : 'Limit: ' + planBorrowLimit + ' books') + '</div>' +
+              '</div>' : '') +
 
               '</div>' +
 
@@ -923,7 +929,7 @@ function confirmBorrow() {
               // ─── Summary ───
               '<div style="display:flex;flex-direction:column;gap:6px;">' +
               '<div><i class="fas fa-book me-2" style="color:#d48b71;width:18px;"></i><strong>Book:</strong> <?= addslashes($book->getTitle()) ?></div>' +
-              '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Your Active Books:</strong> ' + personalUsage + ' / ' + (isMember ? planBorrowLimit : freeBorrowLimit) + '</div>' +
+              '<div><i class="fas fa-user-check me-2" style="color:#10b981;width:18px;"></i><strong>Usage:</strong> <span id="bdActiveBooksSummary">' + (isMember && !isPlanLimitReached ? membershipUsage + ' / ' + planBorrowLimit : freeUsage + ' / ' + freeBorrowLimit) + '</span></div>' +
               '<div><i class="fas fa-calendar-day me-2" style="color:#f59e0b;width:18px;"></i><strong>Duration:</strong> ' + borrowDuration + ' Days</div>' +
               '</div>' +
 
@@ -933,8 +939,15 @@ function confirmBorrow() {
 
               // ─── Inline style for plan cards ───
               '<style>' +
-              '.plan-card:hover{border-color:#d48b71!important;background:rgba(212,139,113,0.03)!important;}' +
-              '.plan-card.selected{border-color:#d48b71!important;background:rgba(212,139,113,0.04)!important;box-shadow:0 4px 16px rgba(212,139,113,0.12);}' +
+              '.plan-card{flex:1;cursor:pointer;border:2px solid rgba(0,0,0,0.08);border-radius:16px;padding:16px 14px;text-align:center;transition:all 0.25s;background:#fff;position:relative;}' +
+              '.plan-card:hover{border-color:#d48b71;background:rgba(212,139,113,0.02);}' +
+              '.plan-card.selected{border-color:#d48b71;background:rgba(212,139,113,0.04);box-shadow:0 4px 16px rgba(212,139,113,0.12);}' +
+              '.plan-card .plan-badge{display:none;position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#d48b71,#c2664e);color:#fff;font-size:10px;font-weight:800;padding:2px 14px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;z-index:2;white-space:nowrap;}' +
+              '.plan-card.selected .plan-badge{display:block;}' +
+              '.plan-card .plan-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;transition:all 0.25s;}' +
+              '.plan-card.selected .plan-check{background:#d48b71;border-color:#d48b71;color:#fff;}' +
+               '.plan-card.disabled{opacity:0.6;cursor:not-allowed;filter:grayscale(0.5);}' +
+              '.plan-card.disabled .plan-badge{background:#94a3b8;}' +
               '</style>' +
 
               '</div>',
@@ -950,11 +963,10 @@ function confirmBorrow() {
         showClass: { popup: 'animate__animated animate__fadeInDown animate__faster' },
         hideClass: { popup: 'animate__animated animate__fadeOutUp animate__faster' },
         didOpen: () => {
-            // Default selection
-            if (isMember) {
+            // Default selection logic: Choose plan if available, else free
+            if (isMember && !isPlanLimitReached) {
                 document.getElementById('borrowPlanInput').value = 'plan';
             } else {
-                // Auto-select free for bronze users
                 const freeCard = document.querySelector('.plan-card[data-plan="free"]');
                 if (freeCard) selectBorrowPlan(freeCard);
             }
@@ -973,15 +985,20 @@ function confirmBorrow() {
 function selectBorrowPlan(el) {
     document.querySelectorAll('.plan-card').forEach(c => {
         c.classList.remove('selected');
-        c.style.borderColor = 'rgba(0,0,0,0.08)';
-        c.style.background = '#fff';
-        c.style.boxShadow = 'none';
     });
     el.classList.add('selected');
-    el.style.borderColor = '#d48b71';
-    el.style.background = 'rgba(212,139,113,0.04)';
-    el.style.boxShadow = '0 4px 16px rgba(212,139,113,0.12)';
     document.getElementById('borrowPlanInput').value = el.dataset.plan;
+
+    const summaryEl = document.getElementById('bdActiveBooksSummary');
+    if (summaryEl) {
+        const freeBorrowLimit = <?= (int)getSetting('borrow_limit', 3) ?>;
+        const planBorrowLimit = <?= $personalLimit ?>;
+        const freeUsage = <?= $freeUsage ?>;
+        const membershipUsage = <?= $membershipUsage ?>;
+        const limit = el.dataset.plan === 'free' ? freeBorrowLimit : planBorrowLimit;
+        const usage = el.dataset.plan === 'free' ? freeUsage : membershipUsage;
+        summaryEl.textContent = usage + ' / ' + limit;
+    }
 }
 
 // ─── Show borrow result alert on page load ───
@@ -989,7 +1006,7 @@ function selectBorrowPlan(el) {
 document.addEventListener('DOMContentLoaded', function() {
     Swal.fire({
         icon: '<?= $messageType === "success" ? "success" : "error" ?>',
-        title: '<?= $messageType === "success" ? "Request Submitted!" : "Borrow Failed" ?>',
+        title: '<?= $messageType === "success" ? (($result ?? "") === "approved" ? "Success!" : "Request Submitted!") : "Borrow Failed" ?>',
         html: '<div style="font-size:15px;"><?= addslashes($message) ?></div>',
         confirmButtonColor: '#d48b71',
         confirmButtonText: 'OK',

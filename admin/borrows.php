@@ -70,21 +70,45 @@ $counts = [
 // Get records
 $records = $library->getBorrowRequests($currentTab, 100, 0);
 
-// Calculate overdue info for each record
-foreach ($records as &$r) {
-    $r['is_overdue'] = strtotime($r['due_date']) < time() && in_array($r['status'], ['approved', 'return_pending']);
-    $r['overdue_days'] = 0;
-    $r['calculated_penalty'] = 0;
-    if ($r['is_overdue']) {
-        $r['overdue_days'] = (int)floor((time() - strtotime($r['due_date'])) / 86400);
-        $finePerDay = (int)getSetting('fine_per_day', 500);
-        $r['calculated_penalty'] = $r['overdue_days'] * $finePerDay;
+    // Fetch current active "Normal" usage for all users in the record set
+    // This counts books they ALREADY have at home (approved or return_pending)
+    $userIds = array_values(array_unique(array_column($records, 'user_id')));
+    $existingUsage = [];
+    if (!empty($userIds)) {
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $stmt = $library->getPdo()->prepare("
+            SELECT user_id, COUNT(*) as count 
+            FROM borrowing_history 
+            WHERE user_id IN ($placeholders) 
+            AND subscription_id IS NULL 
+            AND returned_at IS NULL 
+            AND status IN ('approved', 'return_pending')
+            GROUP BY user_id
+        ");
+        $stmt->execute($userIds);
+        $existingUsage = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     }
+
+    // Sort records by time to process pending requests in order
+    // We only want to sort a copy for calculation purposes if needed, 
+    // but here we can just iterate and keep track of a running counter.
+    $runningUsage = $existingUsage;
     
-    // Effective borrow fee logic: If they have a subscription, borrow fee is 0
-    // subscription_id is NULL for Bronze (pay-per-borrow) users
-    $r['effective_borrow_price'] = (!empty($r['subscription_id'])) ? 0 : (int)$r['borrow_price'];
-}
+    // The user's free limit for normal users (Bronze)
+    $freeLimit = (int)getSetting('borrow_limit', 3);
+
+    foreach ($records as &$r) {
+        $r['is_overdue'] = strtotime($r['due_date']) < time() && in_array($r['status'], ['approved', 'return_pending']);
+        $r['overdue_days'] = 0;
+        $r['calculated_penalty'] = 0;
+        if ($r['is_overdue']) {
+            $r['overdue_days'] = (int)floor((time() - strtotime($r['due_date'])) / 86400);
+            $finePerDay = (int)getSetting('fine_per_day', 500);
+            $r['calculated_penalty'] = $r['overdue_days'] * $finePerDay;
+        }
+
+        $r['effective_borrow_price'] = (float)($r['borrow_fee'] ?? 0);
+    }
 unset($r);
 
 renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $records, $library) {
@@ -261,14 +285,35 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
         </div>
     </div>
     <div class="card-body p-4 pt-3">
-        <?php if (empty($records)): ?>
+        <?php
+        $memberRecords = [];
+        $normalRecords = [];
+        foreach ($records as $r) {
+            if (!empty($r['active_subscription_id'])) {
+                $memberRecords[] = $r;
+            } else {
+                $normalRecords[] = $r;
+            }
+        }
+        
+        if (empty($records)): 
+        ?>
             <div class="bm-empty">
                 <i class="fas fa-inbox"></i>
                 <h5>No records found</h5>
                 <p>There are no borrow records matching this filter.</p>
             </div>
-        <?php else: ?>
-            <div class="table-responsive-stack-container">
+        <?php else: 
+            $tableTypes = [
+                ['title' => '<i class="fas fa-crown text-warning me-2"></i>Membership Plan Borrows', 'records' => $memberRecords, 'isMember' => true],
+                ['title' => '<i class="fas fa-user text-primary me-2"></i>Pay-Per-Borrow (Normal)', 'records' => $normalRecords, 'isMember' => false],
+            ];
+            foreach ($tableTypes as $tt):
+                if (empty($tt['records'])) continue;
+                $isMem = $tt['isMember'];
+        ?>
+            <h6 class="fw-800 text-dark mb-3 px-2 pt-2"><?= $tt['title'] ?></h6>
+            <div class="table-responsive-stack-container mb-4">
                 <table class="table table-borderless align-middle admin-table-premium mb-0">
                     <thead class="bg-lightest">
                         <tr>
@@ -278,12 +323,12 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                             <th class="text-uppercase smallest fw-800">BORROWED ON</th>
                             <th class="text-uppercase smallest fw-800">DUE DATE</th>
                             <th class="text-uppercase smallest fw-800">STATUS</th>
-                            <th class="px-4 text-uppercase smallest fw-800">FEES</th>
+                            <th class="px-4 text-uppercase smallest fw-800"><?= $isMem ? 'PLAN' : 'FEES' ?></th>
                             <th class="pe-4 text-center text-uppercase smallest fw-800">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($records as $idx => $r):
+                        <?php foreach ($tt['records'] as $idx => $r):
                             $coverUrl = getBookCoverUrl($r, $r['title'] ?? '', $r['author'] ?? '');
                             $fallback = getDummyBookCover($r['title'] ?? '', $r['author'] ?? '', 80, 110);
                         ?>
@@ -334,29 +379,46 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                                     <span class="bm-status <?= $r['status'] ?>"><i class="fas <?= $icon ?>"></i> <?= ucfirst(str_replace('_', ' ', $r['status'])) ?></span>
                                 <?php endif; ?>
                             </td>
-                             <td class="px-4" data-label="FEES">
+                             <td class="px-4" data-label="<?= $isMem ? 'PLAN' : 'FEES' ?>">
                                 <div class="fee-breakdown">
-                                     <div class="d-flex justify-content-between mb-1">
-                                        <span class="text-muted smallest fw-700">Borrow:</span>
-                                        <?php if ($r['effective_borrow_price'] == 0 && $r['borrow_price'] > 0): ?>
-                                             <span class="fw-800 text-success smaller">0 Ks <span class="text-muted opacity-50 text-decoration-line-through smaller fw-normal ms-1"><?= number_format($r['borrow_price']) ?></span></span>
+                                    <?php if ($isMem): ?>
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="text-muted smallest fw-700">Plan:</span>
+                                            <span class="fw-800 text-primary smaller"><?= ucfirst($r['subscription_tier'] ?? 'Membership') ?></span>
+                                        </div>
+                                        <div class="text-center mt-2 mb-1">
+                                            <span class="badge bg-success text-white" style="font-size:10px;">Free Member Borrow</span>
+                                        </div>
+                                    <?php else: ?>
+                                        <?php if ($r['effective_borrow_price'] > 0): ?>
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <span class="text-muted smallest fw-700">Borrow:</span>
+                                                <span class="fw-800 text-dark smaller"><?= number_format($r['effective_borrow_price']) ?> Ks</span>
+                                            </div>
                                         <?php else: ?>
-                                             <span class="fw-800 text-dark smaller"><?= number_format($r['effective_borrow_price']) ?> Ks</span>
+                                            <div class="text-center mt-2 mb-1">
+                                                <span class="badge bg-success text-white" style="font-size:10px;">Free Token Used</span>
+                                            </div>
                                         <?php endif; ?>
-                                    </div>
+                                    <?php endif; ?>
+                                    
                                     <?php 
                                     $penalty = max($r['calculated_penalty'], $r['penalty_fee'] ?? 0);
                                     if ($penalty > 0): 
                                     ?>
-                                        <div class="d-flex justify-content-between mb-1">
+                                        <div class="<?= $isMem ? 'border-top pt-1 mt-1' : '' ?> d-flex justify-content-between mb-1">
                                             <span class="text-muted smallest fw-700">Penalty:</span>
                                             <span class="fw-800 text-danger smaller"><?= number_format($penalty) ?> Ks</span>
                                         </div>
                                     <?php endif; ?>
-                                    <div class="border-top pt-1 mt-1 d-flex justify-content-between">
-                                        <span class="text-dark smallest fw-800">Total:</span>
-                                        <span class="fw-900 text-primary smaller"><?= number_format($r['effective_borrow_price'] + $penalty) ?> Ks</span>
-                                    </div>
+                                    
+                                    <?php if (!$isMem && ($r['effective_borrow_price'] > 0 || $penalty > 0)): ?>
+                                        <div class="border-top pt-1 mt-1 d-flex justify-content-between">
+                                            <span class="text-dark smallest fw-800">Total:</span>
+                                            <span class="fw-900 text-primary smaller"><?= number_format($r['effective_borrow_price'] + $penalty) ?> Ks</span>
+                                        </div>
+                                    <?php endif; ?>
+
                                     <?php if ($penalty > 0 && ($r['penalty_paid'] ?? 0)): ?>
                                         <div class="text-success smallest fw-800 mt-1"><i class="fas fa-check-circle me-1"></i>Penalty Paid</div>
                                     <?php endif; ?>
@@ -413,6 +475,7 @@ renderAdminLayout('Borrow Management', function () use ($currentTab, $counts, $r
                     </tbody>
                 </table>
             </div>
+            <?php endforeach; ?>
         <?php endif; ?>
     </div>
 </div>

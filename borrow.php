@@ -256,35 +256,36 @@ include 'views/header.php';
                                             <i class="far fa-calendar"></i> Due: <?= date('M j, Y', strtotime($b['due_date'])) ?>
                                         </div>
                                         
-                                         <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
-                                            <div class="d-flex justify-content-between mb-1">
-                                                <span class="text-muted">Borrow Fee:</span>
-                                                <span class="fw-bold <?= $isMember ? 'text-decoration-line-through opacity-50' : '' ?>"><?= number_format($b['borrow_price']) ?> Ks</span>
-                                            </div>
-                                            <?php if ($isMember): ?>
-                                                <div class="d-flex justify-content-between mb-1 text-success">
-                                                    <span class="smallest fw-700">Member Discount:</span>
-                                                    <span class="fw-bold">- <?= number_format($b['borrow_price']) ?> Ks</span>
-                                                </div>
-                                            <?php endif; ?>
-                                            <?php 
-                                            $fee = $isMember ? 0 : (int)$b['borrow_price'];
-                                            $p = 0;
-                                            if ($isOverdue): 
-                                                $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
-                                                $finePerDay = (int)getSetting('fine_per_day', 500);
-                                                $p = $overdueDays * $finePerDay;
-                                            ?>
-                                                <div class="d-flex justify-content-between text-danger mb-1">
-                                                    <span>Penalty:</span>
-                                                    <span class="fw-bold">+ <?= number_format($p) ?> Ks</span>
-                                                </div>
-                                            <?php endif; ?>
-                                            <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
-                                                <span class="fw-bold">Total Payable:</span>
-                                                <span class="fw-bold"><?= number_format($fee + $p) ?> Ks</span>
-                                            </div>
-                                        </div>
+                                         <?php if ((float)$b['borrow_fee'] > 0 || $isOverdue): ?>
+                                          <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
+                                             <div class="d-flex justify-content-between mb-1">
+                                                 <span class="text-muted">Borrow Fee:</span>
+                                                 <span class="fw-bold"><?= number_format($b['borrow_fee']) ?> Ks</span>
+                                             </div>
+                                             <?php 
+                                             $fee = (float)$b['borrow_fee'];
+                                             $p = 0;
+                                             if ($isOverdue): 
+                                                 $overdueDays = (int)floor((time() - strtotime($b['due_date'])) / 86400);
+                                                 $finePerDay = (int)getSetting('fine_per_day', 500);
+                                                 $p = $overdueDays * $finePerDay;
+                                             ?>
+                                                 <div class="d-flex justify-content-between text-danger mb-1">
+                                                     <span>Penalty:</span>
+                                                     <span class="fw-bold">+ <?= number_format($p) ?> Ks</span>
+                                                 </div>
+                                             <?php endif; ?>
+                                             <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
+                                                 <span class="fw-bold">Total Payable:</span>
+                                                 <span class="fw-bold"><?= number_format($fee + $p) ?> Ks</span>
+                                             </div>
+                                         </div>
+                                         <?php else: ?>
+                                             <?php 
+                                                 $fee = 0; 
+                                                 $p = 0; 
+                                             ?>
+                                         <?php endif; ?>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
@@ -417,28 +418,29 @@ include 'views/header.php';
                                             <?php endif; ?>
                                         </div>
 
+                                         <?php if ($b['borrow_fee'] > 0 || ($b['penalty_fee'] ?? 0) > 0): ?>
                                          <div class="mt-2 p-2 rounded-3 bg-light-subtle border" style="font-size:11px;">
                                             <div class="d-flex justify-content-between mb-1">
                                                 <span class="text-muted">Borrow Fee:</span>
-                                                <span class="fw-bold"><?= number_format($b['borrow_price']) ?> Ks</span>
+                                                <span class="fw-bold"><?= number_format($b['borrow_fee']) ?> Ks</span>
                                             </div>
-                                            <?php if (($b['penalty_fee'] ?? 0) > 0 || ($isOverdue ?? false)): 
-                                                $p = max($b['penalty_fee'] ?? 0, (isset($penalty) ? $penalty : 0));
-                                                if ($p > 0):
+                                            <?php if (($b['penalty_fee'] ?? 0) > 0): 
+                                                $p = (float)$b['penalty_fee'];
                                             ?>
                                                 <div class="d-flex justify-content-between text-danger mb-1">
                                                     <span>Penalty:</span>
                                                     <span class="fw-bold">+ <?= number_format($p) ?> Ks</span>
                                                 </div>
-                                            <?php endif; endif; ?>
+                                            <?php endif; ?>
                                             <div class="d-flex justify-content-between border-top pt-1 mt-1 text-primary">
                                                 <span class="fw-bold">Total:</span>
-                                                <span class="fw-bold"><?= number_format($b['borrow_price'] + ($p ?? 0)) ?> Ks</span>
+                                                <span class="fw-bold"><?= number_format((float)$b['borrow_fee'] + (isset($p) ? $p : 0)) ?> Ks</span>
                                             </div>
                                             <?php if (($b['penalty_fee'] ?? 0) > 0 && ($b['penalty_paid'] ?? 0)): ?>
                                                 <div class="text-success mt-1 fw-bold"><i class="fas fa-check-circle"></i> Paid</div>
                                             <?php endif; ?>
                                         </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 <div class="bw-card-actions">
